@@ -1,12 +1,14 @@
 :root {
   --corner-width: 42vw;
   --corner-height: 36vh;
-  --corner-bg: #294438;
-  --corner-active: #3a5f4d;
-  --bubble-bg: #9aa1a8;
-  --bubble-border: #6f767d;
-  --bg: #2b303c;
-  --text: #f5f5f5;
+  --corner-bg: #F3F0E3;
+  --corner-active: #CFEAE6;
+  --corner-closed: #E3B8B4;
+  --bubble-bg: #278F8E;
+  --bubble-border: #174E59;
+  --bg: #5FB8B5;
+  --text: #174E59;
+  --text-light: #F3F0E3;
   /* Shared sizing for the center-row bubbles, kept as variables so the
      undo button and its mirroring spacer can match next-letter-preview
      exactly, and so every column can shrink together on narrow phones
@@ -55,7 +57,7 @@ html, body {
   gap: 10px;
   padding: 8px;
   background: var(--corner-bg);
-  border: 1px solid #10131a;
+  border: 1px solid var(--bubble-border);
   border-radius: 16px;
   font-size: clamp(1.1rem, 4.4vw, 1.8rem);
   letter-spacing: 0.08em;
@@ -80,7 +82,7 @@ html, body {
 }
 
 .corner.closed {
-  background: #4a1f1f;
+  background: var(--corner-closed);
   cursor: not-allowed;
 }
 
@@ -99,7 +101,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  color: #4ade80;
+  color: #E8963C;
   font-weight: 700;
   white-space: nowrap;
   pointer-events: none;
@@ -136,7 +138,7 @@ html, body {
 
 #score-display {
   background: var(--corner-bg);
-  border: 1px solid #10131a;
+  border: 1px solid var(--bubble-border);
   border-radius: 8px;
   padding: 4px 14px;
   font-size: 0.9rem;
@@ -149,10 +151,10 @@ html, body {
   width: var(--small-bubble);
   height: var(--small-bubble);
   padding: 0;
-  border: 1px solid #454b58;
+  border: 1px solid var(--bubble-border);
   border-radius: 50%;
   background: var(--bubble-bg);
-  color: #10131a;
+  color: var(--text-light);
   font-size: clamp(1.2rem, 4.4vw, 1.9rem);
   font-weight: 700;
   line-height: 1;
@@ -202,7 +204,7 @@ html, body {
 #current-letter {
   font-size: clamp(2.4rem, 9vw, 3.6rem);
   font-weight: 700;
-  color: #10131a;
+  color: var(--text-light);
   cursor: grab;
   touch-action: none;
 }
@@ -216,7 +218,7 @@ html, body {
   height: var(--small-bubble);
   border-radius: 50%;
   background: var(--corner-bg);
-  border: 1px solid #10131a;
+  border: 1px solid var(--bubble-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -249,7 +251,7 @@ html, body {
   height: var(--side-bubble);
   border-radius: 50%;
   background: var(--corner-bg);
-  border: 2px dashed #454b58;
+  border: 2px dashed var(--bubble-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -271,7 +273,7 @@ html, body {
 #hold-letter {
   font-size: clamp(1.4rem, 6vw, 2.2rem);
   font-weight: 700;
-  color: #10131a;
+  color: var(--text-light);
   cursor: grab;
   touch-action: none;
 }
@@ -295,7 +297,7 @@ html, body {
   align-items: center;
   gap: 12px;
   background: var(--corner-bg);
-  border: 1px solid #10131a;
+  border: 1px solid var(--bubble-border);
   border-radius: 12px;
   padding: 24px 32px;
   text-align: center;
