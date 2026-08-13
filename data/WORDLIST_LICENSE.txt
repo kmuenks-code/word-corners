@@ -1,0 +1,14 @@
+wordlist.txt is derived from ENABLE1 (Enhanced North American Benchmark
+LExicon), a word list originally compiled by Alan Beale and placed in the
+public domain. It is a widely used, freely redistributable substitute for
+official Scrabble word lists (e.g. NWL/OSPD), close but not identical in
+coverage.
+
+Source mirror used: https://github.com/dolph/dictionary
+  (raw file: enable1.txt)
+
+Processing applied: uppercased, filtered to entries containing only A-Z,
+deduplicated, sorted. No definitions or copyrighted material included.
+
+Public domain — free to use, modify, and redistribute, including in
+commercial or published projects.
