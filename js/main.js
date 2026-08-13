@@ -27,6 +27,7 @@ let state = createGameState();
 
 const cornerEls = Array.from(document.querySelectorAll('.corner'));
 const currentLetterEl = document.getElementById('current-letter');
+const centerEl = document.getElementById('center');
 const nextLetterEl = document.getElementById('next-letter');
 const scoreEl = document.getElementById('score-value');
 const finalScoreEl = document.getElementById('final-score');
@@ -132,12 +133,10 @@ async function start() {
   renderHold(holdSlotEl, holdLetterEl, null);
   await loadWordList();
 
-  initDrag(currentLetterEl, [...cornerEls, holdSlotEl], handleDrop);
-  initDrag(holdLetterEl, cornerEls, handleHoldDrop);
+  initDrag(currentLetterEl, [...cornerEls, holdSlotEl], handleDrop, centerEl);
+  initDrag(holdLetterEl, cornerEls, handleHoldDrop, holdSlotEl);
   cornerEls.forEach((cornerEl) => {
-    cornerEl
-      .querySelector('.submit-btn')
-      .addEventListener('click', () => handleSubmit(cornerEl.dataset.corner));
+    cornerEl.addEventListener('click', () => handleSubmit(cornerEl.dataset.corner));
   });
   newGameBtn.addEventListener('click', resetGame);
 

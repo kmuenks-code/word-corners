@@ -49,11 +49,13 @@ html, body {
   background: var(--corner-bg);
   border: 1px solid #10131a;
   border-radius: 16px;
-  font-size: clamp(0.85rem, 3.4vw, 1.4rem);
+  font-size: clamp(1.1rem, 4.4vw, 1.8rem);
   letter-spacing: 0.08em;
   word-break: break-all;
   text-align: center;
   transition: background 0.15s ease;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 #corner-nw { top: calc(14px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left)); }
@@ -71,10 +73,6 @@ html, body {
 
 .corner.closed {
   background: #4a1f1f;
-}
-
-.corner.closed .submit-btn {
-  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -82,18 +80,6 @@ html, body {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-6px); }
   75% { transform: translateX(6px); }
-}
-
-.submit-btn {
-  font-size: 0.85rem;
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: none;
-  background: var(--accent);
-  color: #10131a;
-  font-weight: 600;
-  cursor: pointer;
-  touch-action: manipulation;
 }
 
 #center-stack {
@@ -136,6 +122,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: grab;
+  touch-action: none;
 }
 
 #current-letter {
@@ -201,11 +189,13 @@ html, body {
   align-items: center;
   justify-content: center;
   transition: background 0.15s ease, border-color 0.15s ease;
+  touch-action: none;
 }
 
 #hold-slot.occupied {
   background: var(--accent);
   border: 2px solid var(--accent);
+  cursor: grab;
 }
 
 #hold-slot.drop-target {

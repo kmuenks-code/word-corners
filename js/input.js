@@ -1,17 +1,24 @@
 // Handles dragging the center letter to a corner. Pointer Events cover
 // mouse + touch in one path. Reports drops via onDrop(cornerName);
 // knows nothing about game state or scoring.
+//
+// hitEl is the (larger) element that starts the drag on pointerdown,
+// separate from dragEl (the letter itself, which is what visually
+// moves) so the whole bubble around a letter is grabbable, not just
+// the glyph. Defaults to dragEl when not given. A hitEl with the
+// `.empty` class (the hold slot with nothing in it) never starts a drag.
 
-export function initDrag(dragEl, corners, onDrop) {
+export function initDrag(dragEl, corners, onDrop, hitEl = dragEl) {
   let dragging = false;
   let startX = 0;
   let startY = 0;
   let offsetX = 0;
   let offsetY = 0;
 
-  dragEl.addEventListener('pointerdown', (e) => {
+  hitEl.addEventListener('pointerdown', (e) => {
+    if (hitEl.classList.contains('empty')) return;
     dragging = true;
-    dragEl.setPointerCapture(e.pointerId);
+    hitEl.setPointerCapture(e.pointerId);
     dragEl.classList.add('dragging');
     const rect = dragEl.getBoundingClientRect();
     startX = rect.left;

@@ -27,12 +27,10 @@ export function renderHold(holdSlotEl, holdLetterEl, letter) {
 
 export function renderClosedCorner(cornerEl) {
   cornerEl.classList.add('closed');
-  cornerEl.querySelector('.submit-btn').disabled = true;
 }
 
 export function resetCornerVisuals(cornerEl) {
   cornerEl.classList.remove('closed', 'invalid');
-  cornerEl.querySelector('.submit-btn').disabled = false;
 }
 
 export function renderGameOver(bodyEl, finalScoreEl, score) {
