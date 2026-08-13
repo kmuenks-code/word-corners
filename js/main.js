@@ -21,6 +21,7 @@ import {
   renderGameOver,
   hideGameOver,
   renderHold,
+  showWordFeedback,
 } from './ui.js';
 
 let state = createGameState();
@@ -107,8 +108,10 @@ function handleSubmit(cornerName) {
   const cornerEl = cornerElFor(cornerName);
 
   if (isValidWord(word)) {
-    addScore(state, scoreWord(word));
+    const points = scoreWord(word);
+    addScore(state, points);
     renderScore(scoreEl, state.score);
+    showWordFeedback(cornerEl, word.length, points);
     clearCorner(state, cornerName);
     renderCorner(cornerEl, '');
   } else {

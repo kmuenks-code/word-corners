@@ -25,6 +25,18 @@ export function renderHold(holdSlotEl, holdLetterEl, letter) {
   holdSlotEl.classList.toggle('empty', !letter);
 }
 
+export function showWordFeedback(cornerEl, wordLength, points) {
+  const existing = cornerEl.querySelector('.word-feedback');
+  if (existing) existing.remove();
+
+  const feedbackEl = document.createElement('div');
+  feedbackEl.className = 'word-feedback';
+  feedbackEl.innerHTML = `<span class="word-feedback-length">${wordLength} Letter Word</span><span class="word-feedback-points">+${points} Points</span>`;
+  cornerEl.appendChild(feedbackEl);
+
+  feedbackEl.addEventListener('animationend', () => feedbackEl.remove());
+}
+
 export function renderClosedCorner(cornerEl) {
   cornerEl.classList.add('closed');
 }
