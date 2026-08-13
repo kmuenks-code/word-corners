@@ -14,6 +14,7 @@
 
 html, body {
   height: 100%;
+  height: 100dvh;
   margin: 0;
   overflow: hidden;
   background: var(--bg);
@@ -27,6 +28,7 @@ html, body {
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
 }
 
 .corner {
@@ -53,10 +55,10 @@ html, body {
   transition: background 0.15s ease;
 }
 
-#corner-nw { top: 14px; left: 14px; }
-#corner-ne { top: 14px; right: 14px; }
-#corner-sw { bottom: 14px; left: 14px; }
-#corner-se { bottom: 14px; right: 14px; }
+#corner-nw { top: calc(14px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left)); }
+#corner-ne { top: calc(14px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
+#corner-sw { bottom: calc(14px + env(safe-area-inset-bottom)); left: calc(14px + env(safe-area-inset-left)); }
+#corner-se { bottom: calc(14px + env(safe-area-inset-bottom)); right: calc(14px + env(safe-area-inset-right)); }
 
 .corner.drop-target {
   background: var(--corner-active);
