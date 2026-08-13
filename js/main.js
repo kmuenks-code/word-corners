@@ -6,6 +6,10 @@ import {
   closeCorner,
   setHoldLetter,
   clearHoldLetter,
+  removeLastLetter,
+  reopenCorner,
+  setCurrentLetter,
+  setNextLetter,
 } from './gameState.js';
 import { getRandomLetter } from './letterSource.js';
 import { loadWordList, isValidWord, hasWordWithPrefix } from './wordValidator.js';
@@ -22,9 +26,13 @@ import {
   hideGameOver,
   renderHold,
   showWordFeedback,
+  renderUndoAvailability,
 } from './ui.js';
 
 let state = createGameState();
+// Single-level undo: records enough to reverse the most recent drop.
+// Cleared whenever a word is submitted, since that's a checkpoint.
+let lastMove = null;
 
 const cornerEls = Array.from(document.querySelectorAll('.corner'));
 const currentLetterEl = document.getElementById('current-letter');
@@ -35,6 +43,7 @@ const finalScoreEl = document.getElementById('final-score');
 const newGameBtn = document.getElementById('new-game-btn');
 const holdSlotEl = document.getElementById('hold-slot');
 const holdLetterEl = document.getElementById('hold-letter');
+const undoBtn = document.getElementById('undo-btn');
 
 function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
@@ -50,10 +59,15 @@ function nextTurn() {
 function handleDrop(targetName) {
   if (state.gameOver) return;
 
+  const prevCurrentLetter = state.currentLetter;
+  const prevNextLetter = state.nextLetter;
+
   if (targetName === 'hold') {
     if (state.holdLetter) return;
     setHoldLetter(state, state.currentLetter);
     renderHold(holdSlotEl, holdLetterEl, state.holdLetter);
+    lastMove = { type: 'toHold', prevCurrentLetter, prevNextLetter };
+    renderUndoAvailability(undoBtn, true);
     nextTurn();
     return;
   }
@@ -65,10 +79,15 @@ function handleDrop(targetName) {
   const cornerEl = cornerElFor(targetName);
   renderCorner(cornerEl, word);
 
+  let closedNow = false;
   if (word.length >= 5 && !hasWordWithPrefix(word)) {
     closeCorner(state, targetName);
     renderClosedCorner(cornerEl);
+    closedNow = true;
   }
+
+  lastMove = { type: 'corner', corner: targetName, closedNow, prevCurrentLetter, prevNextLetter };
+  renderUndoAvailability(undoBtn, true);
 
   if (state.gameOver) {
     renderGameOver(document.body, finalScoreEl, state.score);
@@ -81,7 +100,8 @@ function handleDrop(targetName) {
 function handleHoldDrop(cornerName) {
   if (state.closedCorners[cornerName] || state.gameOver || !state.holdLetter) return;
 
-  appendLetterToCorner(state, cornerName, state.holdLetter);
+  const heldLetter = state.holdLetter;
+  appendLetterToCorner(state, cornerName, heldLetter);
   const word = state.corners[cornerName];
   const cornerEl = cornerElFor(cornerName);
   renderCorner(cornerEl, word);
@@ -89,14 +109,59 @@ function handleHoldDrop(cornerName) {
   clearHoldLetter(state);
   renderHold(holdSlotEl, holdLetterEl, state.holdLetter);
 
+  let closedNow = false;
   if (word.length >= 5 && !hasWordWithPrefix(word)) {
     closeCorner(state, cornerName);
     renderClosedCorner(cornerEl);
+    closedNow = true;
   }
+
+  lastMove = { type: 'fromHold', corner: cornerName, letter: heldLetter, closedNow };
+  renderUndoAvailability(undoBtn, true);
 
   if (state.gameOver) {
     renderGameOver(document.body, finalScoreEl, state.score);
   }
+}
+
+function handleUndo() {
+  if (!lastMove || state.gameOver) return;
+
+  if (lastMove.type === 'corner') {
+    const { corner, closedNow, prevCurrentLetter, prevNextLetter } = lastMove;
+    removeLastLetter(state, corner);
+    const cornerEl = cornerElFor(corner);
+    renderCorner(cornerEl, state.corners[corner]);
+    if (closedNow) {
+      reopenCorner(state, corner);
+      resetCornerVisuals(cornerEl);
+    }
+    setCurrentLetter(state, prevCurrentLetter);
+    setNextLetter(state, prevNextLetter);
+    renderLetter(currentLetterEl, state.currentLetter);
+    renderLetter(nextLetterEl, state.nextLetter);
+  } else if (lastMove.type === 'toHold') {
+    clearHoldLetter(state);
+    renderHold(holdSlotEl, holdLetterEl, state.holdLetter);
+    setCurrentLetter(state, lastMove.prevCurrentLetter);
+    setNextLetter(state, lastMove.prevNextLetter);
+    renderLetter(currentLetterEl, state.currentLetter);
+    renderLetter(nextLetterEl, state.nextLetter);
+  } else if (lastMove.type === 'fromHold') {
+    const { corner, letter, closedNow } = lastMove;
+    removeLastLetter(state, corner);
+    const cornerEl = cornerElFor(corner);
+    renderCorner(cornerEl, state.corners[corner]);
+    if (closedNow) {
+      reopenCorner(state, corner);
+      resetCornerVisuals(cornerEl);
+    }
+    setHoldLetter(state, letter);
+    renderHold(holdSlotEl, holdLetterEl, state.holdLetter);
+  }
+
+  lastMove = null;
+  renderUndoAvailability(undoBtn, false);
 }
 
 function handleSubmit(cornerName) {
@@ -114,6 +179,8 @@ function handleSubmit(cornerName) {
     showWordFeedback(cornerEl, word.length, points);
     clearCorner(state, cornerName);
     renderCorner(cornerEl, '');
+    lastMove = null;
+    renderUndoAvailability(undoBtn, false);
   } else {
     flashInvalid(cornerEl);
   }
@@ -121,6 +188,8 @@ function handleSubmit(cornerName) {
 
 function resetGame() {
   state = createGameState();
+  lastMove = null;
+  renderUndoAvailability(undoBtn, false);
   hideGameOver(document.body);
   renderScore(scoreEl, state.score);
   renderHold(holdSlotEl, holdLetterEl, null);
@@ -142,6 +211,7 @@ async function start() {
     cornerEl.addEventListener('click', () => handleSubmit(cornerEl.dataset.corner));
   });
   newGameBtn.addEventListener('click', resetGame);
+  undoBtn.addEventListener('click', handleUndo);
 
   nextTurn();
 }

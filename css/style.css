@@ -135,12 +135,44 @@ html, body {
   font-size: 0.9rem;
 }
 
+#undo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(28px, 8vw, 38px);
+  height: clamp(28px, 8vw, 38px);
+  padding: 0;
+  border: 1px solid #454b58;
+  border-radius: 50%;
+  background: var(--bubble-bg);
+  color: #10131a;
+  font-size: clamp(0.95rem, 3.4vw, 1.2rem);
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#undo-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 #center-row {
   display: grid;
-  grid-template-columns: clamp(70px, 18vw, 100px) auto clamp(70px, 18vw, 100px);
+  grid-template-columns:
+    clamp(28px, 8vw, 38px)
+    clamp(70px, 18vw, 100px)
+    auto
+    clamp(70px, 18vw, 100px)
+    clamp(28px, 8vw, 38px);
   align-items: center;
   justify-items: center;
   gap: 14px;
+}
+
+.center-row-spacer {
+  width: 1px;
+  height: 1px;
 }
 
 #center {

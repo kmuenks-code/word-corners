@@ -37,6 +37,10 @@ export function showWordFeedback(cornerEl, wordLength, points) {
   feedbackEl.addEventListener('animationend', () => feedbackEl.remove());
 }
 
+export function renderUndoAvailability(undoBtn, available) {
+  undoBtn.disabled = !available;
+}
+
 export function renderClosedCorner(cornerEl) {
   cornerEl.classList.add('closed');
 }

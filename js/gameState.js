@@ -20,6 +20,23 @@ export function clearCorner(state, corner) {
   state.corners[corner] = '';
 }
 
+export function removeLastLetter(state, corner) {
+  state.corners[corner] = state.corners[corner].slice(0, -1);
+}
+
+export function reopenCorner(state, corner) {
+  state.closedCorners[corner] = false;
+  state.gameOver = false;
+}
+
+export function setCurrentLetter(state, letter) {
+  state.currentLetter = letter;
+}
+
+export function setNextLetter(state, letter) {
+  state.nextLetter = letter;
+}
+
 export function addScore(state, points) {
   state.score += points;
 }
