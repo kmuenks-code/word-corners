@@ -1,21 +1,55 @@
 :root {
-  --corner-width: 42vw;
-  --corner-height: 36vh;
+  /* Palette */
   --corner-bg: #F3F0E3;
+  --corner-bg-deep: #E4DFC9;
   --corner-active: #CFEAE6;
+  --corner-active-deep: #ABD8D3;
   --corner-closed: #E3B8B4;
+  --corner-closed-deep: #CE9B97;
   --bubble-bg: #278F8E;
+  --bubble-light: #48B2AE;
+  --bubble-deep: #1B6F74;
   --bubble-border: #174E59;
   --bg: #5FB8B5;
+  --bg-light: #7FCFCB;
+  --bg-deep: #47A0A1;
   --text: #174E59;
   --text-light: #F3F0E3;
+  --shadow: rgba(12, 58, 68, 0.28);
+  --shadow-soft: rgba(12, 58, 68, 0.16);
+  --accent: #E8963C;
+
+  /* Vertical bands reserved outside the four corner tiles: the title/score
+     row up top, the hint bar down bottom, and the middle strip the center
+     row lives in. Corner height is whatever is left over, split in two, so
+     the tiles always fit the screen instead of colliding with the center. */
+  --top-band: clamp(56px, 12vh, 96px);
+  --bottom-band: clamp(66px, 11vh, 92px);
+  --center-band: clamp(132px, 24vh, 210px);
+  --edge-gap: clamp(10px, 3.2vw, 20px);
+  --corner-gap: clamp(8px, 2.6vw, 18px);
+  --corner-height: clamp(
+    112px,
+    (100dvh - var(--top-band) - var(--bottom-band) - var(--center-band)
+      - env(safe-area-inset-top) - env(safe-area-inset-bottom)) / 2,
+    330px
+  );
+  --corner-width: calc((100% - 2 * var(--edge-gap) - var(--corner-gap)) / 2);
+  --corner-radius: clamp(18px, 5vw, 30px);
+
   /* Shared sizing for the center-row bubbles, kept as variables so the
      undo button and its mirroring spacer can match next-letter-preview
      exactly, and so every column can shrink together on narrow phones
      instead of forcing the row wider than the viewport. */
   --small-bubble: clamp(44px, 11vw, 72px); /* undo-btn, next-letter-preview, spacer */
-  --side-bubble: clamp(56px, 16vw, 100px); /* hold-slot's column width */
-  --center-row-gap: clamp(6px, 3vw, 14px);
+  --side-bubble: clamp(52px, 16vw, 100px); /* hold-slot's column width */
+  --center-row-gap: clamp(4px, 2.4vw, 14px);
+  /* The live-letter bubble is the tallest thing in the row, so it's capped
+     by the center band as well as by width — otherwise a short, wide
+     viewport sizes it off vw alone and it spills into the corner tiles.
+     The subtracted reserve covers the "Current" pill above it plus the
+     halo ring, which overhangs the bubble on every side. */
+  --center-bubble: max(88px, min(26vw, 170px, var(--center-band) - clamp(38px, 7vh, 54px)));
 }
 
 * {
@@ -30,51 +64,156 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, sans-serif;
+  font-family: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display",
+    "Segoe UI", system-ui, sans-serif;
   touch-action: none;
   user-select: none;
 }
 
+body {
+  /* Lit from the top-center and deepening toward the edges, like the
+     reference art, with a soft floor shadow at the very bottom. */
+  background:
+    radial-gradient(120% 62% at 50% 100%, rgba(12, 58, 68, 0.18) 0%, rgba(12, 58, 68, 0) 70%),
+    radial-gradient(130% 90% at 50% -8%, var(--bg-light) 0%, var(--bg) 46%, var(--bg-deep) 100%);
+}
+
 #board {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: min(100%, 560px);
+  height: 100%;
   height: 100dvh;
+  margin: 0 auto;
 }
+
+/* Faint drifting bubbles — pure decoration, never intercepts pointers. */
+#board::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 4% 30%, rgba(255, 255, 255, 0.20) 0 5px, transparent 6px),
+    radial-gradient(circle at 96% 14%, rgba(255, 255, 255, 0.16) 0 7px, transparent 8px),
+    radial-gradient(circle at 97% 34%, rgba(255, 255, 255, 0.13) 0 4px, transparent 5px),
+    radial-gradient(circle at 3% 66%, rgba(255, 255, 255, 0.15) 0 6px, transparent 7px),
+    radial-gradient(circle at 97% 72%, rgba(255, 255, 255, 0.12) 0 4px, transparent 5px);
+}
+
+/* ---------- Top bar ---------- */
+
+#top-bar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + clamp(8px, 2vh, 18px));
+  left: var(--edge-gap);
+  right: var(--edge-gap);
+  height: calc(var(--top-band) - clamp(8px, 2vh, 18px));
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  z-index: 15;
+}
+
+#game-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: clamp(1.35rem, 6.6vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--text);
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.22);
+}
+
+#score-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: clamp(56px, 17vw, 84px);
+  padding: clamp(4px, 1.2vw, 8px) clamp(8px, 3vw, 16px);
+  border-radius: 14px;
+  background: linear-gradient(165deg, #FDFBF2 0%, var(--corner-bg) 60%, var(--corner-bg-deep) 100%);
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.14),
+    0 6px 12px var(--shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+#score-label {
+  font-size: clamp(0.52rem, 2.2vw, 0.68rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+#score-value {
+  font-size: clamp(1.05rem, 4.6vw, 1.5rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* ---------- Corner tiles ---------- */
 
 .corner {
   position: absolute;
+  z-index: 1;
   width: var(--corner-width);
   height: var(--corner-height);
-  min-width: 128px;
-  min-height: 160px;
-  max-width: 220px;
-  max-height: 340px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 8px;
-  background: var(--corner-bg);
-  border: 1px solid var(--bubble-border);
-  border-radius: 16px;
-  font-size: clamp(1.1rem, 4.4vw, 1.8rem);
+  padding: 10px;
+  background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
+  border: none;
+  border-radius: var(--corner-radius);
+  box-shadow:
+    0 6px 0 -1px rgba(12, 58, 68, 0.13),
+    0 14px 24px var(--shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -8px 14px rgba(140, 129, 96, 0.12);
+  color: var(--text);
+  font-size: clamp(1.15rem, 5vw, 2rem);
+  font-weight: 800;
   letter-spacing: 0.08em;
   word-break: break-all;
   text-align: center;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   cursor: pointer;
   touch-action: manipulation;
 }
 
-#corner-nw { top: calc(14px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left)); }
-#corner-ne { top: calc(14px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
-#corner-sw { bottom: calc(14px + env(safe-area-inset-bottom)); left: calc(14px + env(safe-area-inset-left)); }
-#corner-se { bottom: calc(14px + env(safe-area-inset-bottom)); right: calc(14px + env(safe-area-inset-right)); }
+#corner-nw {
+  top: calc(var(--top-band) + env(safe-area-inset-top));
+  left: calc(var(--edge-gap) + env(safe-area-inset-left));
+}
+#corner-ne {
+  top: calc(var(--top-band) + env(safe-area-inset-top));
+  right: calc(var(--edge-gap) + env(safe-area-inset-right));
+}
+#corner-sw {
+  bottom: calc(var(--bottom-band) + env(safe-area-inset-bottom));
+  left: calc(var(--edge-gap) + env(safe-area-inset-left));
+}
+#corner-se {
+  bottom: calc(var(--bottom-band) + env(safe-area-inset-bottom));
+  right: calc(var(--edge-gap) + env(safe-area-inset-right));
+}
 
 .corner.drop-target {
-  background: var(--corner-active);
+  background: linear-gradient(160deg, #F0FBF9 0%, var(--corner-active) 52%, var(--corner-active-deep) 100%);
+  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.55),
+    0 9px 0 -1px rgba(12, 58, 68, 0.15),
+    0 20px 30px var(--shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
 }
 
 .corner.invalid {
@@ -82,7 +221,12 @@ html, body {
 }
 
 .corner.closed {
-  background: var(--corner-closed);
+  background: linear-gradient(160deg, #F0CFCC 0%, var(--corner-closed) 52%, var(--corner-closed-deep) 100%);
+  color: #7A3B3B;
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.12),
+    0 8px 16px var(--shadow-soft),
+    inset 0 2px 0 rgba(255, 255, 255, 0.55);
   cursor: not-allowed;
 }
 
@@ -101,9 +245,10 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  color: #E8963C;
-  font-weight: 700;
+  color: var(--accent);
+  font-weight: 800;
   white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
   pointer-events: none;
   z-index: 20;
   animation: word-feedback-pop 1s ease forwards;
@@ -124,47 +269,24 @@ html, body {
   100% { opacity: 0; transform: translate(-50%, -50%) translateY(-28px); }
 }
 
+/* ---------- Center row ---------- */
+
+/* Spans exactly the gap between the top and bottom corner tiles and
+   flex-centers the row inside it. Deliberately transform-free: a
+   transformed ancestor would become the containing block for the
+   `position: fixed` letter that input.js drags, throwing off its
+   viewport-based coordinates. */
 #center-stack {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  z-index: 10;
-}
-
-#score-display {
-  background: var(--corner-bg);
-  border: 1px solid var(--bubble-border);
-  border-radius: 8px;
-  padding: 4px 14px;
-  font-size: 0.9rem;
-}
-
-#undo-btn {
+  left: 0;
+  right: 0;
+  top: calc(var(--top-band) + env(safe-area-inset-top) + var(--corner-height));
+  bottom: calc(var(--bottom-band) + env(safe-area-inset-bottom) + var(--corner-height));
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--small-bubble);
-  height: var(--small-bubble);
-  padding: 0;
-  border: 1px solid var(--bubble-border);
-  border-radius: 50%;
-  background: var(--bubble-bg);
-  color: var(--text-light);
-  font-size: clamp(1.2rem, 4.4vw, 1.9rem);
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-#undo-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+  z-index: 10;
+  pointer-events: none;
 }
 
 #center-row {
@@ -178,6 +300,35 @@ html, body {
   align-items: center;
   justify-items: center;
   gap: var(--center-row-gap);
+  pointer-events: auto;
+}
+
+.row-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(3px, 1vw, 6px);
+}
+
+.row-label {
+  font-size: clamp(0.55rem, 2.3vw, 0.72rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.pill-label {
+  padding: 3px clamp(8px, 2.5vw, 14px);
+  border-radius: 999px;
+  background: linear-gradient(165deg, #FDFBF2 0%, var(--corner-bg) 100%);
+  opacity: 1;
+  box-shadow:
+    0 3px 0 -1px rgba(12, 58, 68, 0.12),
+    0 5px 10px var(--shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .center-row-spacer {
@@ -185,15 +336,57 @@ html, body {
   height: 1px;
 }
 
-#center {
-  width: 26vw;
-  height: 26vw;
-  min-width: 88px;
-  min-height: 88px;
-  max-width: 170px;
-  max-height: 170px;
+#undo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--small-bubble);
+  height: var(--small-bubble);
+  padding: 0;
+  border: none;
   border-radius: 50%;
-  background: var(--bubble-bg);
+  background: radial-gradient(circle at 34% 26%, var(--bubble-light) 0%, var(--bubble-bg) 52%, var(--bubble-deep) 100%);
+  box-shadow:
+    0 5px 0 -1px rgba(12, 58, 68, 0.3),
+    0 9px 16px var(--shadow),
+    inset 0 2px 4px rgba(255, 255, 255, 0.4),
+    inset 0 -5px 10px rgba(9, 50, 60, 0.3);
+  color: var(--text-light);
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+
+#undo-btn svg {
+  width: 52%;
+  height: 52%;
+}
+
+#undo-btn:not(:disabled):active {
+  transform: translateY(3px);
+  box-shadow:
+    0 2px 0 -1px rgba(12, 58, 68, 0.3),
+    0 4px 8px var(--shadow-soft),
+    inset 0 2px 4px rgba(255, 255, 255, 0.35);
+}
+
+#undo-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#center {
+  width: var(--center-bubble);
+  height: var(--center-bubble);
+  position: relative;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 24%, var(--bubble-light) 0%, var(--bubble-bg) 48%, var(--bubble-deep) 100%);
+  box-shadow:
+    0 8px 0 -1px rgba(12, 58, 68, 0.30),
+    0 16px 26px var(--shadow),
+    inset 0 5px 9px rgba(255, 255, 255, 0.5),
+    inset 0 -7px 14px rgba(9, 50, 60, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -201,24 +394,35 @@ html, body {
   touch-action: none;
 }
 
-#current-letter {
-  font-size: clamp(2.4rem, 9vw, 3.6rem);
-  font-weight: 700;
-  color: var(--text-light);
-  cursor: grab;
-  touch-action: none;
+/* Soft halo + "drag me" ring behind the live letter. */
+#center::before {
+  content: "";
+  position: absolute;
+  inset: -9%;
+  border-radius: 50%;
+  border: 2px dashed rgba(243, 240, 227, 0.34);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 74%);
+  pointer-events: none;
 }
 
-#current-letter.dragging {
-  cursor: grabbing;
+#current-letter {
+  font-size: calc(var(--center-bubble) * 0.42);
+  font-weight: 800;
+  color: var(--text-light);
+  text-shadow: 0 2px 4px rgba(9, 50, 60, 0.35);
+  cursor: grab;
+  touch-action: none;
 }
 
 #next-letter-preview {
   width: var(--small-bubble);
   height: var(--small-bubble);
   border-radius: 50%;
-  background: var(--corner-bg);
-  border: 1px solid var(--bubble-border);
+  background: linear-gradient(165deg, #FDFBF2 0%, var(--corner-bg) 58%, var(--corner-bg-deep) 100%);
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.16),
+    0 8px 14px var(--shadow-soft),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -226,54 +430,47 @@ html, body {
 }
 
 #next-letter {
-  font-size: clamp(1.1rem, 4vw, 1.6rem);
-  font-weight: 700;
+  font-size: calc(var(--small-bubble) * 0.42);
+  font-weight: 800;
   color: var(--text);
-  opacity: 0.7;
-}
-
-#hold-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-#hold-label {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.6;
 }
 
 #hold-slot {
   width: var(--side-bubble);
   height: var(--side-bubble);
   border-radius: 50%;
-  background: var(--corner-bg);
-  border: 2px dashed var(--bubble-bg);
+  background: rgba(243, 240, 227, 0.28);
+  border: 2px dashed rgba(243, 240, 227, 0.7);
+  box-shadow: inset 0 2px 8px rgba(9, 50, 60, 0.14);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   touch-action: none;
 }
 
 #hold-slot.occupied {
-  background: var(--bubble-bg);
-  border: 2px solid var(--bubble-bg);
+  background: radial-gradient(circle at 34% 26%, var(--bubble-light) 0%, var(--bubble-bg) 50%, var(--bubble-deep) 100%);
+  border: none;
+  box-shadow:
+    0 6px 0 -1px rgba(12, 58, 68, 0.3),
+    0 11px 18px var(--shadow),
+    inset 0 3px 6px rgba(255, 255, 255, 0.4),
+    inset 0 -6px 12px rgba(9, 50, 60, 0.3);
   cursor: grab;
 }
 
 #hold-slot.drop-target {
-  background: var(--corner-active);
-  border-color: var(--bubble-border);
+  background: rgba(243, 240, 227, 0.55);
+  border-color: #FFFFFF;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35);
 }
 
 #hold-letter {
-  font-size: clamp(1.4rem, 6vw, 2.2rem);
-  font-weight: 700;
+  font-size: calc(var(--side-bubble) * 0.42);
+  font-weight: 800;
   color: var(--text-light);
+  text-shadow: 0 2px 4px rgba(9, 50, 60, 0.35);
   cursor: grab;
   touch-action: none;
 }
@@ -282,9 +479,60 @@ html, body {
   pointer-events: none;
 }
 
+/* A letter in flight crosses both the teal board and the cream tiles, so
+   it goes dark with a cream halo to stay legible over either. */
+#current-letter.dragging,
 #hold-letter.dragging {
+  z-index: 60;
+  color: var(--text);
+  text-shadow:
+    0 0 4px rgba(243, 240, 227, 1),
+    0 0 12px rgba(243, 240, 227, 0.95),
+    0 5px 12px rgba(12, 58, 68, 0.3);
   cursor: grabbing;
 }
+
+/* ---------- Hint bar ---------- */
+
+#hint-bar {
+  position: absolute;
+  left: var(--edge-gap);
+  right: var(--edge-gap);
+  bottom: calc(env(safe-area-inset-bottom) + clamp(6px, 1.6vh, 14px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 2.5vw, 14px);
+  padding: clamp(7px, 1.6vh, 12px) clamp(12px, 4vw, 20px);
+  border-radius: 999px;
+  background: rgba(243, 240, 227, 0.18);
+  border: 1px solid rgba(243, 240, 227, 0.35);
+  color: var(--text-light);
+  font-size: clamp(0.7rem, 3vw, 0.9rem);
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  z-index: 5;
+}
+
+#hint-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(24px, 7vw, 32px);
+  height: clamp(24px, 7vw, 32px);
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(243, 240, 227, 0.85);
+  color: var(--bubble-bg);
+}
+
+#hint-icon svg {
+  width: 62%;
+  height: 62%;
+}
+
+/* ---------- Game over ---------- */
 
 #game-over {
   display: none;
@@ -295,24 +543,58 @@ html, body {
   z-index: 30;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  background: var(--corner-bg);
-  border: 1px solid var(--bubble-border);
-  border-radius: 12px;
-  padding: 24px 32px;
+  gap: 14px;
+  min-width: min(78%, 300px);
+  background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
+  border-radius: 24px;
+  box-shadow:
+    0 8px 0 -1px rgba(12, 58, 68, 0.14),
+    0 20px 36px var(--shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
+  padding: 26px 32px;
   text-align: center;
 }
 
 #game-over-label {
-  font-size: 1.4rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 #final-score-row {
   font-size: 1rem;
+  font-weight: 600;
+  opacity: 0.8;
 }
 
-body.game-over #center-row {
+#new-game-btn {
+  padding: 11px 26px;
+  border: none;
+  border-radius: 999px;
+  background: radial-gradient(circle at 34% 20%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
+  box-shadow:
+    0 5px 0 -1px rgba(12, 58, 68, 0.3),
+    0 9px 16px var(--shadow),
+    inset 0 2px 3px rgba(255, 255, 255, 0.4);
+  color: var(--text-light);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+#new-game-btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 2px 0 -1px rgba(12, 58, 68, 0.3),
+    0 4px 8px var(--shadow-soft),
+    inset 0 2px 3px rgba(255, 255, 255, 0.35);
+}
+
+body.game-over #center-row,
+body.game-over #hint-bar {
   display: none;
 }
 

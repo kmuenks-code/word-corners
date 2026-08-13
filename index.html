@@ -8,6 +8,14 @@
 </head>
 <body>
 <div id="board">
+  <header id="top-bar">
+    <h1 id="game-title">Word Corners</h1>
+    <div id="score-badge">
+      <span id="score-label">Score</span>
+      <span id="score-value">0</span>
+    </div>
+  </header>
+
   <div class="corner" id="corner-nw" data-corner="nw">
     <span class="word"></span>
   </div>
@@ -22,21 +30,34 @@
   </div>
 
   <div id="center-stack">
-    <div id="score-display">Score: <span id="score-value">0</span></div>
-
     <div id="center-row">
-      <button id="undo-btn" type="button" aria-label="Undo" title="Undo" disabled>&#8630;</button>
-
-      <div id="next-letter-preview">
-        <div id="next-letter"></div>
+      <div class="row-slot">
+        <button id="undo-btn" type="button" aria-label="Undo" title="Undo" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.5 8.5h9a5.5 5.5 0 1 1 0 11H9"/>
+            <path d="M8.5 4.5 4.5 8.5l4 4"/>
+          </svg>
+        </button>
+        <span class="row-label">Undo</span>
       </div>
 
-      <div id="center">
-        <div id="current-letter"></div>
+      <div class="row-slot">
+        <div id="next-letter-preview">
+          <div id="next-letter"></div>
+        </div>
+        <span class="row-label">Next</span>
       </div>
 
-      <div id="hold-section">
-        <div id="hold-label">Hold</div>
+      <div class="row-slot" id="center-section">
+        <span class="row-label pill-label">Current</span>
+        <div id="center">
+          <div id="current-letter"></div>
+        </div>
+      </div>
+
+      <div class="row-slot" id="hold-section">
+        <span class="row-label" id="hold-label">Hold</span>
         <div id="hold-slot" class="empty" data-corner="hold">
           <div id="hold-letter"></div>
         </div>
@@ -44,6 +65,16 @@
 
       <div class="center-row-spacer" aria-hidden="true"></div>
     </div>
+  </div>
+
+  <div id="hint-bar">
+    <span id="hint-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.5 18.5h5M10.5 21.5h3M12 2.5a7 7 0 0 0-4 12.8v2.2h8v-2.2a7 7 0 0 0-4-12.8z"/>
+      </svg>
+    </span>
+    <span id="hint-text">Drag the letter into a corner.<br>Tap a corner to score its word!</span>
   </div>
 
   <div id="game-over">
