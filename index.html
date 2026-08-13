@@ -7,8 +7,6 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="score-display">Score: <span id="score-value">0</span></div>
-
 <div id="board">
   <div class="corner" id="corner-nw" data-corner="nw">
     <span class="word"></span>
@@ -27,20 +25,24 @@
     <button class="submit-btn" type="button">Submit</button>
   </div>
 
-  <div id="center-row">
-    <div id="next-letter-preview">
-      <div id="next-letter"></div>
-    </div>
+  <div id="center-stack">
+    <div id="score-display">Score: <span id="score-value">0</span></div>
 
-    <div id="center">
-      <div id="current-letter"></div>
-    </div>
-  </div>
+    <div id="center-row">
+      <div id="next-letter-preview">
+        <div id="next-letter"></div>
+      </div>
 
-  <div id="hold-section">
-    <div id="hold-label">Hold</div>
-    <div id="hold-slot" class="empty" data-corner="hold">
-      <div id="hold-letter"></div>
+      <div id="center">
+        <div id="current-letter"></div>
+      </div>
+
+      <div id="hold-section">
+        <div id="hold-label">Hold</div>
+        <div id="hold-slot" class="empty" data-corner="hold">
+          <div id="hold-letter"></div>
+        </div>
+      </div>
     </div>
   </div>
 

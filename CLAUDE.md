@@ -9,8 +9,8 @@ Vanilla HTML/CSS/JS, ES modules, no build step, no dependencies. Open
 `index.html` directly or serve statically.
 
 ## Files
-- `index.html` — markup: 4 `.corner` divs (`id="corner-nw|ne|sw|se"`, `data-corner="nw|ne|sw|se"`, each with `.word` span + `.submit-btn`) + `#score-display` + `#center-row` (containing `#next-letter-preview`/`#next-letter` and `#center`/`#current-letter`) + `#hold-section` (`#hold-label` + `#hold-slot`/`#hold-letter`, `data-corner="hold"`) + `#game-over` overlay (`#final-score` + `#new-game-btn`).
-- `css/style.css` — corners are small, absolutely-positioned boxes pinned to the four true screen corners (`#corner-nw|ne|sw|se` position rules, sized off `--corner-size`), leaving open space in the middle for the center letter, hold section, and future controls. Drag styling + `.invalid` shake animation + `.corner.closed` red shading. `#center-row` is the absolutely-centered flex container holding the next-letter preview circle and the draggable current-letter circle side by side. `#hold-section` is pinned to the right-middle edge; `#hold-slot` is dashed/empty when unoccupied and solid/`.occupied` when holding a letter (an `.empty` `#hold-slot` sets `pointer-events: none` on `#hold-letter` so an empty hold can't be dragged). `body.game-over` hides `#center-row` and `#hold-section` and shows the `#game-over` overlay.
+- `index.html` — markup: 4 `.corner` divs (`id="corner-nw|ne|sw|se"`, `data-corner="nw|ne|sw|se"`, each with `.word` span + `.submit-btn`) + `#center-stack` (containing `#score-display` and `#center-row`) + `#game-over` overlay (`#final-score` + `#new-game-btn`). `#center-row` holds `#next-letter-preview`/`#next-letter`, `#center`/`#current-letter`, and `#hold-section` (`#hold-label` + `#hold-slot`/`#hold-letter`, `data-corner="hold"`) side by side, in that order.
+- `css/style.css` — corners are large, absolutely-positioned boxes pinned to the four true screen corners (`#corner-nw|ne|sw|se` position rules using `env(safe-area-inset-*)`, sized off `--corner-width`/`--corner-height`, independent axes since the viewport is taller than it is wide), filling most of the screen and leaving only a tight band around the center group. Drag styling + `.invalid` shake animation + `.corner.closed` red shading. `#center-stack` is the absolutely-centered flex column holding `#score-display` directly above `#center-row`. `#center-row` is a 3-column CSS grid (`grid-template-columns: clamp(...) auto clamp(...)`, matching side-column widths explicitly rather than `1fr` — an auto-sized grid container doesn't equalize `1fr` tracks by itself) so the center letter stays truly centered with `#next-letter-preview` and `#hold-section` equally spaced on either side. `#hold-slot` is dashed/empty when unoccupied and solid/`.occupied` when holding a letter (an `.empty` `#hold-slot` sets `pointer-events: none` on `#hold-letter` so an empty hold can't be dragged). `body.game-over` hides `#center-row` (score stays visible) and shows the `#game-over` overlay.
 - `js/gameState.js` — game data only (`corners`, `closedCorners`, `currentLetter`, `nextLetter`, `holdLetter`, `score`, `gameOver`) + mutators `appendLetterToCorner`, `clearCorner`, `addScore`, `closeCorner` (marks a corner dead, flips `gameOver` once all four are closed), `setHoldLetter`, `clearHoldLetter`. No DOM.
 - `js/letterSource.js` — `LETTER_FREQUENCIES` (standard Scrabble tile distribution) + `getRandomLetter(frequencies = LETTER_FREQUENCIES)`. Takes an optional frequency table so future difficulty scaling can pass adjusted weights without changing the selection logic.
 - `js/wordValidator.js` — `loadWordList()` (async, fetches `data/wordlist.txt` into a `Set`) + `isValidWord(word)` (sync, throws if called before load) + `hasWordWithPrefix(prefix)` (sync, true if any dictionary word starts with `prefix`; used to detect dead corners). Real dictionary, not a stub.
@@ -48,9 +48,10 @@ letters long and no dictionary word starts with it
 (`hasWordWithPrefix` in `wordValidator.js`) — rechecked on every letter
 added from length 5 onward, since a word that could still become legal
 at 5 letters can lose that potential when a 6th letter is added. When
-all 4 corners are closed the game ends: `#center-row` and `#hold-section`
-hide, a centered overlay shows the final score and a "New Game" button
-that rebuilds game state and resumes play.
+all 4 corners are closed the game ends: `#center-row` (letter, next-letter
+preview, and hold section) hides while `#score-display` stays visible, a
+centered overlay shows the final score and a "New Game" button that
+rebuilds game state and resumes play.
 
 A "Hold" slot sits to the right of the current letter. Dragging the
 current letter onto it (only while empty) stores it there instead of a

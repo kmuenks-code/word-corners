@@ -1,5 +1,6 @@
 :root {
-  --corner-size: 34vw;
+  --corner-width: 42vw;
+  --corner-height: 36vh;
   --corner-bg: #2a2f3a;
   --corner-active: #3b4252;
   --accent: #4fd1c5;
@@ -33,12 +34,12 @@ html, body {
 
 .corner {
   position: absolute;
-  width: var(--corner-size);
-  height: var(--corner-size);
+  width: var(--corner-width);
+  height: var(--corner-height);
   min-width: 128px;
-  min-height: 128px;
-  max-width: 190px;
-  max-height: 190px;
+  min-height: 160px;
+  max-width: 220px;
+  max-height: 340px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -95,12 +96,19 @@ html, body {
   touch-action: manipulation;
 }
 
-#score-display {
-  position: fixed;
-  top: 8px;
+#center-stack {
+  position: absolute;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+}
+
+#score-display {
   background: var(--corner-bg);
   border: 1px solid #10131a;
   border-radius: 8px;
@@ -109,23 +117,20 @@ html, body {
 }
 
 #center-row {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
+  display: grid;
+  grid-template-columns: clamp(70px, 18vw, 100px) auto clamp(70px, 18vw, 100px);
   align-items: center;
+  justify-items: center;
   gap: 14px;
-  z-index: 10;
 }
 
 #center {
-  width: 22vw;
-  height: 22vw;
-  min-width: 90px;
-  min-height: 90px;
-  max-width: 140px;
-  max-height: 140px;
+  width: 26vw;
+  height: 26vw;
+  min-width: 108px;
+  min-height: 108px;
+  max-width: 170px;
+  max-height: 170px;
   border-radius: 50%;
   background: var(--accent);
   display: flex;
@@ -134,7 +139,7 @@ html, body {
 }
 
 #current-letter {
-  font-size: clamp(2rem, 8vw, 3rem);
+  font-size: clamp(2.4rem, 9vw, 3.6rem);
   font-weight: 700;
   color: #10131a;
   cursor: grab;
@@ -169,15 +174,10 @@ html, body {
 }
 
 #hold-section {
-  position: absolute;
-  top: 50%;
-  right: 16px;
-  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  z-index: 10;
 }
 
 #hold-label {
@@ -255,8 +255,7 @@ html, body {
   font-size: 1rem;
 }
 
-body.game-over #center-row,
-body.game-over #hold-section {
+body.game-over #center-row {
   display: none;
 }
 
