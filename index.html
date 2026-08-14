@@ -42,28 +42,39 @@
         <span class="row-label">Undo</span>
       </div>
 
-      <div class="row-slot">
-        <div id="next-letter-preview">
-          <div id="next-letter"></div>
-        </div>
-        <span class="row-label">Next</span>
-      </div>
-
-      <div class="row-slot" id="center-section">
-        <span class="row-label pill-label">Current</span>
-        <div id="center">
-          <div id="current-letter"></div>
+      <div class="row-slot choice-slot">
+        <div class="choice-bubble" id="choice-0">
+          <div class="choice-letter" id="choice-letter-0"></div>
         </div>
       </div>
 
-      <div class="row-slot" id="hold-section">
-        <span class="row-label" id="hold-label">Hold</span>
-        <div id="hold-slot" class="empty" data-corner="hold">
-          <div id="hold-letter"></div>
+      <div class="row-slot choice-slot">
+        <div class="choice-bubble" id="choice-1">
+          <div class="choice-letter" id="choice-letter-1"></div>
+        </div>
+      </div>
+
+      <div class="row-slot choice-slot">
+        <div class="choice-bubble" id="choice-2">
+          <div class="choice-letter" id="choice-letter-2"></div>
         </div>
       </div>
 
       <div class="center-row-spacer" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <!-- Idle: single-letter + hold flow this replaced. Not wired into the
+       active game (see js/main.js); kept in case that flow is revisited. -->
+  <div id="legacy-controls" hidden>
+    <div id="next-letter-preview">
+      <div id="next-letter"></div>
+    </div>
+    <div id="center">
+      <div id="current-letter"></div>
+    </div>
+    <div id="hold-slot" class="empty" data-corner="hold">
+      <div id="hold-letter"></div>
     </div>
   </div>
 
@@ -74,7 +85,7 @@
         <path d="M9.5 18.5h5M10.5 21.5h3M12 2.5a7 7 0 0 0-4 12.8v2.2h8v-2.2a7 7 0 0 0-4-12.8z"/>
       </svg>
     </span>
-    <span id="hint-text">Drag the letter into a corner.<br>Tap a corner to score its word!</span>
+    <span id="hint-text">Drag a letter into a corner.<br>Tap a corner to score its word!</span>
   </div>
 
   <div id="game-over">

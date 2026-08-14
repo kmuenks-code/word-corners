@@ -4,12 +4,19 @@ export function createGameState() {
   return {
     corners: { nw: '', ne: '', sw: '', se: '' },
     closedCorners: { nw: false, ne: false, sw: false, se: false },
+    choices: [null, null, null],
+    // Idle: unused by the three-choice turn loop, kept in case the
+    // single-letter + hold flow is revisited. See main.js.
     currentLetter: null,
-    nextLetter: null, // reserved for next-letter preview feature
+    nextLetter: null,
     holdLetter: null,
     score: 0,
     gameOver: false,
   };
+}
+
+export function setChoiceLetter(state, index, letter) {
+  state.choices[index] = letter;
 }
 
 export function appendLetterToCorner(state, corner, letter) {
