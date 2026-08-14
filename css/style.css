@@ -380,7 +380,7 @@ body {
    see index.html) but colored to stand out as a special, grabbable
    letter. Hidden (via the `hidden` attribute on its #blank-slot
    row-slot) whenever no blank is pending. */
-.blank-bubble {
+.choice-bubble.blank-bubble {
   width: var(--small-bubble);
   height: var(--small-bubble);
   background: radial-gradient(circle at 32% 24%, #FFD873 0%, var(--accent) 55%, #C06E1C 100%);

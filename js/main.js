@@ -116,7 +116,7 @@ function handleDrop(index, targetName) {
   renderCorner(cornerEl, word);
 
   let closedNow = false;
-  if (word.length >= 5 && !hasWordWithPrefix(word)) {
+  if (!hasWordWithPrefix(word)) {
     closeCorner(state, targetName);
     renderClosedCorner(cornerEl);
     closedNow = true;
@@ -164,7 +164,7 @@ function handleBlankLetterChosen(letter) {
   renderCorner(cornerEl, word);
 
   let closedNow = false;
-  if (word.length >= 5 && !hasWordWithPrefix(word)) {
+  if (!hasWordWithPrefix(word)) {
     closeCorner(state, targetName);
     renderClosedCorner(cornerEl);
     closedNow = true;
