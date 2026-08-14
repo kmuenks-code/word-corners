@@ -3,6 +3,11 @@
 export function createGameState() {
   return {
     corners: { nw: '', ne: '', sw: '', se: '' },
+    // Index positions within each corner's word that were placed via the
+    // blank/wildcard letter (see appendBlankLetterToCorner) — drives both
+    // the gold rendering of those letters and the "a word containing a
+    // blank can't earn another blank" rule. See main.js.
+    blankIndices: { nw: [], ne: [], sw: [], se: [] },
     closedCorners: { nw: false, ne: false, sw: false, se: false },
     choices: [null, null],
     // The upcoming letter shown in the preview bubble. Advances into
@@ -30,12 +35,25 @@ export function appendLetterToCorner(state, corner, letter) {
   state.corners[corner] += letter;
 }
 
+// Same as appendLetterToCorner, but also records the position as
+// blank-derived — see the blankIndices field above.
+export function appendBlankLetterToCorner(state, corner, letter) {
+  state.blankIndices[corner].push(state.corners[corner].length);
+  state.corners[corner] += letter;
+}
+
 export function clearCorner(state, corner) {
   state.corners[corner] = '';
+  state.blankIndices[corner] = [];
 }
 
 export function removeLastLetter(state, corner) {
+  const removedIndex = state.corners[corner].length - 1;
   state.corners[corner] = state.corners[corner].slice(0, -1);
+  const blanks = state.blankIndices[corner];
+  if (blanks.length && blanks[blanks.length - 1] === removedIndex) {
+    blanks.pop();
+  }
 }
 
 export function reopenCorner(state, corner) {

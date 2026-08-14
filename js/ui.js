@@ -1,7 +1,21 @@
 // All DOM reads/writes live here. Pure rendering functions; no game logic.
 
-export function renderCorner(cornerEl, word) {
-  cornerEl.querySelector('.word').textContent = word;
+// blankIndices marks which character positions in `word` were placed via
+// the blank/wildcard letter — those render gold via .blank-letter.
+export function renderCorner(cornerEl, word, blankIndices = []) {
+  const wordEl = cornerEl.querySelector('.word');
+  wordEl.innerHTML = '';
+  const blankSet = new Set(blankIndices);
+  [...word].forEach((char, i) => {
+    if (blankSet.has(i)) {
+      const span = document.createElement('span');
+      span.className = 'blank-letter';
+      span.textContent = char;
+      wordEl.appendChild(span);
+    } else {
+      wordEl.appendChild(document.createTextNode(char));
+    }
+  });
 }
 
 export function renderLetter(letterEl, letter) {

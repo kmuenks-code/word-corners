@@ -1,6 +1,7 @@
 import {
   createGameState,
   appendLetterToCorner,
+  appendBlankLetterToCorner,
   clearCorner,
   addScore,
   closeCorner,
@@ -37,6 +38,7 @@ import {
 
 const CHOICE_COUNT = 2;
 const BLANK_AWARD_LENGTH = 5;
+const MIN_WORD_LENGTH = 3;
 
 let state = createGameState();
 // Single-level undo: records enough to reverse the most recent drop.
@@ -113,7 +115,7 @@ function handleDrop(index, targetName) {
   appendLetterToCorner(state, targetName, prevChoiceLetter);
   const word = state.corners[targetName];
   const cornerEl = cornerElFor(targetName);
-  renderCorner(cornerEl, word);
+  renderCorner(cornerEl, word, state.blankIndices[targetName]);
 
   let closedNow = false;
   if (!hasWordWithPrefix(word)) {
@@ -141,8 +143,10 @@ function renderBlankState() {
   setChoicesBlocked(choiceBubbleEls, state.blankPending);
 }
 
-function awardBlankIfEligible(word) {
-  if (word.length < BLANK_AWARD_LENGTH) return;
+// hadBlank: whether the submitted word already contained a blank-letter —
+// a word that used a blank can't earn another one, even at 5+ letters.
+function awardBlankIfEligible(word, hadBlank) {
+  if (hadBlank || word.length < BLANK_AWARD_LENGTH) return;
   setBlankPending(state, true);
   renderBlankState();
 }
@@ -158,10 +162,10 @@ function handleBlankLetterChosen(letter) {
   const targetName = pendingBlankCorner;
   if (!targetName) return;
 
-  appendLetterToCorner(state, targetName, letter);
+  appendBlankLetterToCorner(state, targetName, letter);
   const word = state.corners[targetName];
   const cornerEl = cornerElFor(targetName);
-  renderCorner(cornerEl, word);
+  renderCorner(cornerEl, word, state.blankIndices[targetName]);
 
   let closedNow = false;
   if (!hasWordWithPrefix(word)) {
@@ -190,7 +194,7 @@ function handleUndo() {
     const { corner, closedNow } = lastMove;
     removeLastLetter(state, corner);
     const cornerEl = cornerElFor(corner);
-    renderCorner(cornerEl, state.corners[corner]);
+    renderCorner(cornerEl, state.corners[corner], state.blankIndices[corner]);
     if (closedNow) {
       reopenCorner(state, corner);
       resetCornerVisuals(cornerEl);
@@ -205,7 +209,7 @@ function handleUndo() {
   const { index, corner, closedNow, prevChoiceLetter, prevNextLetter } = lastMove;
   removeLastLetter(state, corner);
   const cornerEl = cornerElFor(corner);
-  renderCorner(cornerEl, state.corners[corner]);
+  renderCorner(cornerEl, state.corners[corner], state.blankIndices[corner]);
   if (closedNow) {
     reopenCorner(state, corner);
     resetCornerVisuals(cornerEl);
@@ -227,16 +231,17 @@ function handleSubmit(cornerName) {
 
   const cornerEl = cornerElFor(cornerName);
 
-  if (isValidWord(word)) {
+  if (word.length >= MIN_WORD_LENGTH && isValidWord(word)) {
+    const hadBlank = state.blankIndices[cornerName].length > 0;
     const points = scoreWord(word);
     addScore(state, points);
     renderScore(scoreEl, state.score);
-    showWordFeedback(cornerEl, word.length, points, word.length >= BLANK_AWARD_LENGTH);
+    showWordFeedback(cornerEl, word.length, points, word.length >= BLANK_AWARD_LENGTH && !hadBlank);
     clearCorner(state, cornerName);
     renderCorner(cornerEl, '');
     lastMove = null;
     renderUndoAvailability(undoBtn, false);
-    awardBlankIfEligible(word);
+    awardBlankIfEligible(word, hadBlank);
   } else {
     flashInvalid(cornerEl);
   }

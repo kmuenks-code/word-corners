@@ -193,6 +193,13 @@ body {
   touch-action: none;
 }
 
+/* Marks a letter within a corner's word as placed via the blank/wildcard
+   tile — same gold as the blank bubble/picker, so it's recognizable at a
+   glance as "not a normally-drawn letter" wherever it appears. */
+.blank-letter {
+  color: var(--accent);
+}
+
 #corner-nw {
   top: calc(var(--top-band) + env(safe-area-inset-top));
   left: calc(var(--edge-gap) + env(safe-area-inset-left));
