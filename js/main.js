@@ -5,6 +5,7 @@ import {
   addScore,
   closeCorner,
   setChoiceLetter,
+  setNextLetter,
   setHoldLetter,
   clearHoldLetter,
   removeLastLetter,
@@ -28,7 +29,7 @@ import {
   renderUndoAvailability,
 } from './ui.js';
 
-const CHOICE_COUNT = 3;
+const CHOICE_COUNT = 2;
 
 let state = createGameState();
 // Single-level undo: records enough to reverse the most recent drop.
@@ -40,6 +41,7 @@ const scoreEl = document.getElementById('score-value');
 const finalScoreEl = document.getElementById('final-score');
 const newGameBtn = document.getElementById('new-game-btn');
 const undoBtn = document.getElementById('undo-btn');
+const previewLetterEl = document.getElementById('preview-letter');
 const choiceBubbleEls = Array.from({ length: CHOICE_COUNT }, (_, i) =>
   document.getElementById(`choice-${i}`)
 );
@@ -51,20 +53,37 @@ function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
 }
 
-// Draws a fresh random letter into one of the three choice slots, following
-// the same weighting/logic as the previous single-letter draw, plus the
-// vowel/consonant balancing rule in letterSource.js (never 3 vowels or 3
-// consonants across the choice slots at once) — enforced by telling it
-// what the other two slots currently hold.
-function drawChoice(index) {
-  const otherLetters = state.choices.filter((letter, i) => i !== index && letter);
+// Draws a fresh preview letter, following the vowel/consonant balancing
+// rule in letterSource.js (never 3 vowels or 3 consonants among the two
+// choice slots + the preview at once) — enforced by telling it what both
+// choice slots currently hold. The two choice slots themselves are free to
+// match each other's category; only the preview is constrained against them.
+function drawNextLetter() {
+  const otherLetters = state.choices.filter(Boolean);
   const letter = getRandomLetter(otherLetters);
-  setChoiceLetter(state, index, letter);
-  renderLetter(choiceLetterEls[index], letter);
+  setNextLetter(state, letter);
+  renderLetter(previewLetterEl, letter);
 }
 
-function initChoices() {
-  for (let i = 0; i < CHOICE_COUNT; i++) drawChoice(i);
+// Moves the current preview letter into a choice slot, then draws a new
+// preview. This is the "queue advances" refill: both choice slots pull
+// from the same single upcoming-letter preview.
+function advanceChoice(index) {
+  const incoming = state.nextLetter;
+  setChoiceLetter(state, index, incoming);
+  renderLetter(choiceLetterEls[index], incoming);
+  drawNextLetter();
+}
+
+function initRound() {
+  const letters = [];
+  for (let i = 0; i < CHOICE_COUNT; i++) {
+    const letter = getRandomLetter(letters);
+    setChoiceLetter(state, i, letter);
+    letters.push(letter);
+    renderLetter(choiceLetterEls[i], letter);
+  }
+  drawNextLetter();
 }
 
 function handleDrop(index, targetName) {
@@ -72,6 +91,7 @@ function handleDrop(index, targetName) {
   if (state.closedCorners[targetName]) return;
 
   const prevChoiceLetter = state.choices[index];
+  const prevNextLetter = state.nextLetter;
 
   appendLetterToCorner(state, targetName, prevChoiceLetter);
   const word = state.corners[targetName];
@@ -85,9 +105,9 @@ function handleDrop(index, targetName) {
     closedNow = true;
   }
 
-  drawChoice(index);
+  advanceChoice(index);
 
-  lastMove = { index, corner: targetName, closedNow, prevChoiceLetter };
+  lastMove = { index, corner: targetName, closedNow, prevChoiceLetter, prevNextLetter };
   renderUndoAvailability(undoBtn, true);
 
   if (state.gameOver) {
@@ -98,7 +118,7 @@ function handleDrop(index, targetName) {
 function handleUndo() {
   if (!lastMove || state.gameOver) return;
 
-  const { index, corner, closedNow, prevChoiceLetter } = lastMove;
+  const { index, corner, closedNow, prevChoiceLetter, prevNextLetter } = lastMove;
   removeLastLetter(state, corner);
   const cornerEl = cornerElFor(corner);
   renderCorner(cornerEl, state.corners[corner]);
@@ -108,6 +128,8 @@ function handleUndo() {
   }
   setChoiceLetter(state, index, prevChoiceLetter);
   renderLetter(choiceLetterEls[index], prevChoiceLetter);
+  setNextLetter(state, prevNextLetter);
+  renderLetter(previewLetterEl, prevNextLetter);
 
   lastMove = null;
   renderUndoAvailability(undoBtn, false);
@@ -145,11 +167,12 @@ function resetGame() {
     resetCornerVisuals(cornerEl);
     renderCorner(cornerEl, '');
   });
-  initChoices();
+  initRound();
 }
 
 async function start() {
   choiceLetterEls.forEach((el) => renderLetter(el, '…')); // loading indicator
+  renderLetter(previewLetterEl, '…');
   await loadWordList();
 
   choiceBubbleEls.forEach((bubbleEl, index) => {
@@ -161,7 +184,7 @@ async function start() {
   newGameBtn.addEventListener('click', resetGame);
   undoBtn.addEventListener('click', handleUndo);
 
-  initChoices();
+  initRound();
 }
 
 start();
@@ -169,9 +192,12 @@ start();
 // ---------------------------------------------------------------------
 // Idle: the previous single-letter + hold turn loop this replaced. Not
 // called from start() or anywhere else — kept in case that flow (or the
-// hold mechanic layered onto the new three-choice board) is revisited.
-// Depends on the hidden #legacy-controls markup in index.html and the
-// currentLetter/nextLetter/holdLetter fields still tracked in gameState.js.
+// hold mechanic layered onto the two-choice-plus-preview board) is
+// revisited. Depends on the hidden #legacy-controls markup in index.html
+// and the currentLetter/holdLetter fields still tracked in gameState.js
+// (state.nextLetter is shared with the active preview logic above, so this
+// legacy code and the active game would stomp on each other's use of it if
+// both ran — harmless only because this code is never called).
 // ---------------------------------------------------------------------
 
 function legacyNextTurn(currentLetterEl, nextLetterEl) {

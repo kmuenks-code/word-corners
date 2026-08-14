@@ -41,7 +41,7 @@
      undo button and its mirroring spacer can match next-letter-preview
      exactly, and so every column can shrink together on narrow phones
      instead of forcing the row wider than the viewport. */
-  --small-bubble: clamp(44px, 11vw, 72px); /* undo-btn, next-letter-preview, spacer */
+  --small-bubble: clamp(44px, 11vw, 72px); /* undo-btn, preview-bubble, spacer */
   --side-bubble: clamp(52px, 16vw, 100px); /* idle: hold-slot's column width */
   --center-row-gap: clamp(4px, 2.4vw, 14px);
   /* The live-letter bubble is the tallest thing in the row, so it's capped
@@ -50,8 +50,8 @@
      The subtracted reserve covers the "Current" pill above it plus the
      halo ring, which overhangs the bubble on every side. */
   --center-bubble: max(88px, min(26vw, 170px, var(--center-band) - clamp(38px, 7vh, 54px))); /* idle */
-  /* The three interchangeable choice bubbles, sized the same way as
-     --center-bubble was but narrower per-bubble since three now share
+  /* The two interchangeable choice bubbles, sized the same way as
+     --center-bubble was but narrower per-bubble since two now share
      the row's width instead of one. */
   --choice-bubble: max(60px, min(18vw, 108px, var(--center-band) - clamp(30px, 6vh, 44px)));
 }
@@ -297,7 +297,7 @@ body {
   display: grid;
   grid-template-columns:
     var(--small-bubble)
-    var(--choice-bubble)
+    var(--small-bubble)
     var(--choice-bubble)
     var(--choice-bubble)
     var(--small-bubble);
@@ -405,6 +405,29 @@ body {
   text-shadow: 0 2px 4px rgba(9, 50, 60, 0.35);
   cursor: grab;
   touch-action: none;
+}
+
+/* Preview of the upcoming letter — cream/corner-colored (not teal) since
+   it isn't grabbable, only the two choice bubbles are. */
+#preview-bubble {
+  width: var(--small-bubble);
+  height: var(--small-bubble);
+  border-radius: 50%;
+  background: linear-gradient(165deg, #FDFBF2 0%, var(--corner-bg) 58%, var(--corner-bg-deep) 100%);
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.16),
+    0 8px 14px var(--shadow-soft),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#preview-letter {
+  font-size: calc(var(--small-bubble) * 0.42);
+  font-weight: 800;
+  color: var(--text);
 }
 
 /* Idle: the single live-letter bubble the three choice bubbles replaced. */

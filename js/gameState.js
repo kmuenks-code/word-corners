@@ -4,11 +4,13 @@ export function createGameState() {
   return {
     corners: { nw: '', ne: '', sw: '', se: '' },
     closedCorners: { nw: false, ne: false, sw: false, se: false },
-    choices: [null, null, null],
-    // Idle: unused by the three-choice turn loop, kept in case the
-    // single-letter + hold flow is revisited. See main.js.
-    currentLetter: null,
+    choices: [null, null],
+    // The upcoming letter shown in the preview bubble. Advances into
+    // whichever choice slot is used next. See main.js.
     nextLetter: null,
+    // Idle: unused by the active turn loop, kept in case the single-letter
+    // + hold flow is revisited. See main.js.
+    currentLetter: null,
     holdLetter: null,
     score: 0,
     gameOver: false,
