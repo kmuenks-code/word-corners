@@ -6,7 +6,9 @@
 // separate from dragEl (the letter itself, which is what visually
 // moves) so the whole bubble around a letter is grabbable, not just
 // the glyph. Defaults to dragEl when not given. A hitEl with the
-// `.empty` class (the hold slot with nothing in it) never starts a drag.
+// `.empty` class (the hold slot with nothing in it) or the `.blocked`
+// class (a choice bubble frozen out while a blank letter is pending —
+// see main.js) never starts a drag.
 
 export function initDrag(dragEl, corners, onDrop, hitEl = dragEl) {
   let dragging = false;
@@ -16,7 +18,7 @@ export function initDrag(dragEl, corners, onDrop, hitEl = dragEl) {
   let offsetY = 0;
 
   hitEl.addEventListener('pointerdown', (e) => {
-    if (hitEl.classList.contains('empty')) return;
+    if (hitEl.classList.contains('empty') || hitEl.classList.contains('blocked')) return;
     dragging = true;
     hitEl.setPointerCapture(e.pointerId);
     dragEl.classList.add('dragging');

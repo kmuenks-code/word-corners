@@ -6,6 +6,7 @@ import {
   closeCorner,
   setChoiceLetter,
   setNextLetter,
+  setBlankPending,
   setHoldLetter,
   clearHoldLetter,
   removeLastLetter,
@@ -27,14 +28,25 @@ import {
   renderHold,
   showWordFeedback,
   renderUndoAvailability,
+  renderBlankPickerOptions,
+  showBlankPicker,
+  hideBlankPicker,
+  renderBlankBubble,
+  setChoicesBlocked,
 } from './ui.js';
 
 const CHOICE_COUNT = 2;
+const BLANK_AWARD_LENGTH = 5;
 
 let state = createGameState();
 // Single-level undo: records enough to reverse the most recent drop.
 // Cleared whenever a word is submitted, since that's a checkpoint.
+// { type: 'choice', index, corner, closedNow, prevChoiceLetter, prevNextLetter }
+// or { type: 'blank', corner, closedNow } for a blank-letter placement.
 let lastMove = null;
+// Set while the blank-letter picker is open, to the corner it was
+// dropped on; consumed (and cleared) when a letter is chosen.
+let pendingBlankCorner = null;
 
 const cornerEls = Array.from(document.querySelectorAll('.corner'));
 const scoreEl = document.getElementById('score-value');
@@ -48,6 +60,10 @@ const choiceBubbleEls = Array.from({ length: CHOICE_COUNT }, (_, i) =>
 const choiceLetterEls = Array.from({ length: CHOICE_COUNT }, (_, i) =>
   document.getElementById(`choice-letter-${i}`)
 );
+const blankSlotEl = document.getElementById('blank-slot');
+const blankBubbleEl = document.getElementById('blank-bubble');
+const blankPickerEl = document.getElementById('blank-picker');
+const blankPickerGridEl = document.getElementById('blank-picker-grid');
 
 function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
@@ -88,6 +104,7 @@ function initRound() {
 
 function handleDrop(index, targetName) {
   if (state.gameOver) return;
+  if (state.blankPending) return;
   if (state.closedCorners[targetName]) return;
 
   const prevChoiceLetter = state.choices[index];
@@ -107,7 +124,58 @@ function handleDrop(index, targetName) {
 
   advanceChoice(index);
 
-  lastMove = { index, corner: targetName, closedNow, prevChoiceLetter, prevNextLetter };
+  lastMove = { type: 'choice', index, corner: targetName, closedNow, prevChoiceLetter, prevNextLetter };
+  renderUndoAvailability(undoBtn, true);
+
+  if (state.gameOver) {
+    renderGameOver(document.body, finalScoreEl, state.score);
+  }
+}
+
+// Awards a blank/star letter whenever a valid word of BLANK_AWARD_LENGTH+
+// is submitted. Blocks the two normal choice bubbles and word submission
+// until the player drags the blank to a corner and picks a letter — see
+// handleBlankDrop/handleBlankLetterChosen.
+function renderBlankState() {
+  renderBlankBubble(blankSlotEl, state.blankPending);
+  setChoicesBlocked(choiceBubbleEls, state.blankPending);
+}
+
+function awardBlankIfEligible(word) {
+  if (word.length < BLANK_AWARD_LENGTH) return;
+  setBlankPending(state, true);
+  renderBlankState();
+}
+
+function handleBlankDrop(targetName) {
+  if (!state.blankPending || state.gameOver) return;
+  if (state.closedCorners[targetName]) return;
+  pendingBlankCorner = targetName;
+  showBlankPicker(blankPickerEl);
+}
+
+function handleBlankLetterChosen(letter) {
+  const targetName = pendingBlankCorner;
+  if (!targetName) return;
+
+  appendLetterToCorner(state, targetName, letter);
+  const word = state.corners[targetName];
+  const cornerEl = cornerElFor(targetName);
+  renderCorner(cornerEl, word);
+
+  let closedNow = false;
+  if (word.length >= 5 && !hasWordWithPrefix(word)) {
+    closeCorner(state, targetName);
+    renderClosedCorner(cornerEl);
+    closedNow = true;
+  }
+
+  setBlankPending(state, false);
+  renderBlankState();
+  pendingBlankCorner = null;
+  hideBlankPicker(blankPickerEl);
+
+  lastMove = { type: 'blank', corner: targetName, closedNow };
   renderUndoAvailability(undoBtn, true);
 
   if (state.gameOver) {
@@ -117,6 +185,22 @@ function handleDrop(index, targetName) {
 
 function handleUndo() {
   if (!lastMove || state.gameOver) return;
+
+  if (lastMove.type === 'blank') {
+    const { corner, closedNow } = lastMove;
+    removeLastLetter(state, corner);
+    const cornerEl = cornerElFor(corner);
+    renderCorner(cornerEl, state.corners[corner]);
+    if (closedNow) {
+      reopenCorner(state, corner);
+      resetCornerVisuals(cornerEl);
+    }
+    setBlankPending(state, true);
+    renderBlankState();
+    lastMove = null;
+    renderUndoAvailability(undoBtn, false);
+    return;
+  }
 
   const { index, corner, closedNow, prevChoiceLetter, prevNextLetter } = lastMove;
   removeLastLetter(state, corner);
@@ -136,7 +220,7 @@ function handleUndo() {
 }
 
 function handleSubmit(cornerName) {
-  if (state.closedCorners[cornerName] || state.gameOver) return;
+  if (state.closedCorners[cornerName] || state.gameOver || state.blankPending) return;
 
   const word = state.corners[cornerName];
   if (!word) return;
@@ -147,11 +231,12 @@ function handleSubmit(cornerName) {
     const points = scoreWord(word);
     addScore(state, points);
     renderScore(scoreEl, state.score);
-    showWordFeedback(cornerEl, word.length, points);
+    showWordFeedback(cornerEl, word.length, points, word.length >= BLANK_AWARD_LENGTH);
     clearCorner(state, cornerName);
     renderCorner(cornerEl, '');
     lastMove = null;
     renderUndoAvailability(undoBtn, false);
+    awardBlankIfEligible(word);
   } else {
     flashInvalid(cornerEl);
   }
@@ -160,8 +245,11 @@ function handleSubmit(cornerName) {
 function resetGame() {
   state = createGameState();
   lastMove = null;
+  pendingBlankCorner = null;
   renderUndoAvailability(undoBtn, false);
   hideGameOver(document.body);
+  hideBlankPicker(blankPickerEl);
+  renderBlankState();
   renderScore(scoreEl, state.score);
   cornerEls.forEach((cornerEl) => {
     resetCornerVisuals(cornerEl);
@@ -177,6 +265,13 @@ async function start() {
 
   choiceBubbleEls.forEach((bubbleEl, index) => {
     initDrag(choiceLetterEls[index], cornerEls, (target) => handleDrop(index, target), bubbleEl);
+  });
+  initDrag(blankBubbleEl, cornerEls, handleBlankDrop, blankBubbleEl);
+  renderBlankPickerOptions(blankPickerGridEl);
+  blankPickerGridEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.blank-picker-btn');
+    if (!btn) return;
+    handleBlankLetterChosen(btn.dataset.letter);
   });
   cornerEls.forEach((cornerEl) => {
     cornerEl.addEventListener('click', () => handleSubmit(cornerEl.dataset.corner));

@@ -8,6 +8,11 @@ export function createGameState() {
     // The upcoming letter shown in the preview bubble. Advances into
     // whichever choice slot is used next. See main.js.
     nextLetter: null,
+    // True once a 5+ letter valid word has awarded a blank, until the
+    // player drags it to a corner and picks a letter. While true the two
+    // normal choice bubbles are blocked and word submission is disabled —
+    // the blank must be used before anything else. See main.js.
+    blankPending: false,
     // Idle: unused by the active turn loop, kept in case the single-letter
     // + hold flow is revisited. See main.js.
     currentLetter: null,
@@ -44,6 +49,10 @@ export function setCurrentLetter(state, letter) {
 
 export function setNextLetter(state, letter) {
   state.nextLetter = letter;
+}
+
+export function setBlankPending(state, pending) {
+  state.blankPending = pending;
 }
 
 export function addScore(state, points) {

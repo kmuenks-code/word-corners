@@ -266,6 +266,23 @@ body {
   font-size: clamp(1rem, 4vw, 1.3rem);
 }
 
+/* The whole .word-feedback block is already var(--accent), so this line
+   needs more than color alone to read as distinct from the length/points
+   lines above it — a small pill in the blank bubble's own gold gradient
+   (see .blank-bubble) marks it as the bonus line. */
+.word-feedback-blank {
+  margin-top: 2px;
+  padding: 2px clamp(8px, 2.5vw, 12px);
+  border-radius: 999px;
+  background: radial-gradient(circle at 32% 24%, #FFD873 0%, var(--accent) 55%, #C06E1C 100%);
+  color: #FFFBEF;
+  font-size: clamp(0.62rem, 2.5vw, 0.78rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(122, 62, 10, 0.4);
+}
+
 @keyframes word-feedback-pop {
   0% { opacity: 0; transform: translate(-50%, -50%) translateY(0); }
   15% { opacity: 1; transform: translate(-50%, -50%) translateY(-8px); }
@@ -314,6 +331,10 @@ body {
   gap: clamp(3px, 1vw, 6px);
 }
 
+.row-slot[hidden] {
+  display: none;
+}
+
 .row-label {
   font-size: clamp(0.55rem, 2.3vw, 0.72rem);
   font-weight: 700;
@@ -338,6 +359,50 @@ body {
 .center-row-spacer {
   width: 1px;
   height: 1px;
+}
+
+/* Blocked: the two normal choice bubbles while a blank letter is
+   pending (see #blank-bubble below) — grayed out and inert instead of
+   the usual teal, signaling they can't be used until the blank is
+   placed. */
+.choice-bubble.blocked {
+  background: linear-gradient(160deg, #DCD9CC 0%, #C7C3B2 52%, #AFAB99 100%);
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.14),
+    0 8px 14px var(--shadow-soft),
+    inset 0 3px 6px rgba(255, 255, 255, 0.25);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* The blank/star bubble: awarded on a 5+ letter valid word, sized like
+   the small preview/undo bubbles (it lives in that same grid column —
+   see index.html) but colored to stand out as a special, grabbable
+   letter. Hidden (via the `hidden` attribute on its #blank-slot
+   row-slot) whenever no blank is pending. */
+.blank-bubble {
+  width: var(--small-bubble);
+  height: var(--small-bubble);
+  background: radial-gradient(circle at 32% 24%, #FFD873 0%, var(--accent) 55%, #C06E1C 100%);
+  /* Shadow scaled for --small-bubble (matches #undo-btn's recipe), not
+     .choice-bubble's — that shadow is tuned for the much larger
+     --choice-bubble size and, left un-overridden, blurs past this
+     bubble's edge far enough to visually bleed into the neighboring
+     choice bubble. */
+  box-shadow:
+    0 5px 0 -1px rgba(12, 58, 68, 0.3),
+    0 9px 16px var(--shadow),
+    inset 0 2px 4px rgba(255, 255, 255, 0.4),
+    inset 0 -5px 10px rgba(9, 50, 60, 0.3);
+  color: #FFFBEF;
+  cursor: grab;
+  touch-action: none;
+}
+
+.blank-star {
+  width: 52%;
+  height: 52%;
+  filter: drop-shadow(0 2px 3px rgba(122, 62, 10, 0.4));
 }
 
 #undo-btn {
@@ -656,4 +721,77 @@ body.game-over #hint-bar {
 
 body.game-over #game-over {
   display: flex;
+}
+
+/* ---------- Blank letter picker ---------- */
+
+/* Covers the whole board once the blank has been dropped on a corner,
+   forcing a letter choice — no backdrop-dismiss, matching the "must use
+   it immediately" rule (see js/main.js). */
+#blank-picker {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--edge-gap);
+  background: rgba(12, 58, 68, 0.45);
+}
+
+#blank-picker[hidden] {
+  display: none;
+}
+
+#blank-picker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+  background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
+  border-radius: 24px;
+  box-shadow:
+    0 8px 0 -1px rgba(12, 58, 68, 0.14),
+    0 20px 36px var(--shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
+  padding: 22px 24px;
+}
+
+#blank-picker-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+#blank-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.blank-picker-btn {
+  width: clamp(34px, 8vw, 44px);
+  height: clamp(34px, 8vw, 44px);
+  border: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 24%, var(--bubble-light) 0%, var(--bubble-bg) 48%, var(--bubble-deep) 100%);
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.3),
+    0 7px 12px var(--shadow-soft),
+    inset 0 2px 4px rgba(255, 255, 255, 0.4);
+  color: var(--text-light);
+  font-family: inherit;
+  font-size: clamp(0.85rem, 3vw, 1.05rem);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.blank-picker-btn:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 2px 0 -1px rgba(12, 58, 68, 0.3),
+    0 3px 6px var(--shadow-soft),
+    inset 0 2px 3px rgba(255, 255, 255, 0.35);
 }

@@ -25,13 +25,13 @@ export function renderHold(holdSlotEl, holdLetterEl, letter) {
   holdSlotEl.classList.toggle('empty', !letter);
 }
 
-export function showWordFeedback(cornerEl, wordLength, points) {
+export function showWordFeedback(cornerEl, wordLength, points, blankAwarded = false) {
   const existing = cornerEl.querySelector('.word-feedback');
   if (existing) existing.remove();
 
   const feedbackEl = document.createElement('div');
   feedbackEl.className = 'word-feedback';
-  feedbackEl.innerHTML = `<span class="word-feedback-length">${wordLength} Letter Word</span><span class="word-feedback-points">+${points} Points</span>`;
+  feedbackEl.innerHTML = `<span class="word-feedback-length">${wordLength} Letter Word</span><span class="word-feedback-points">+${points} Points</span>${blankAwarded ? '<span class="word-feedback-blank">Blank Tile Earned</span>' : ''}`;
   cornerEl.appendChild(feedbackEl);
 
   feedbackEl.addEventListener('animationend', () => feedbackEl.remove());
@@ -56,4 +56,36 @@ export function renderGameOver(bodyEl, finalScoreEl, score) {
 
 export function hideGameOver(bodyEl) {
   bodyEl.classList.remove('game-over');
+}
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+// Builds the 26 letter buttons in the blank-letter picker once. Callers
+// wire up a single delegated click listener on gridEl.
+export function renderBlankPickerOptions(gridEl) {
+  gridEl.innerHTML = '';
+  ALPHABET.forEach((letter) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'blank-picker-btn';
+    btn.textContent = letter;
+    btn.dataset.letter = letter;
+    gridEl.appendChild(btn);
+  });
+}
+
+export function showBlankPicker(pickerEl) {
+  pickerEl.hidden = false;
+}
+
+export function hideBlankPicker(pickerEl) {
+  pickerEl.hidden = true;
+}
+
+export function renderBlankBubble(slotEl, pending) {
+  slotEl.hidden = !pending;
+}
+
+export function setChoicesBlocked(bubbleEls, blocked) {
+  bubbleEls.forEach((el) => el.classList.toggle('blocked', blocked));
 }

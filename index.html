@@ -61,7 +61,14 @@
         </div>
       </div>
 
-      <div class="center-row-spacer" aria-hidden="true"></div>
+      <div class="row-slot" id="blank-slot" hidden>
+        <div class="choice-bubble blank-bubble" id="blank-bubble">
+          <svg class="blank-star" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M12 2.5l2.9 6.4 7 .8-5.3 4.8 1.5 6.9L12 17.9l-6.1 3.5 1.5-6.9-5.3-4.8 7-.8z"/>
+          </svg>
+        </div>
+        <span class="row-label">Blank</span>
+      </div>
     </div>
   </div>
 
@@ -93,6 +100,13 @@
     <div id="game-over-label">Game Over</div>
     <div id="final-score-row">Final Score: <span id="final-score">0</span></div>
     <button id="new-game-btn" type="button">New Game</button>
+  </div>
+
+  <div id="blank-picker" hidden>
+    <div id="blank-picker-card">
+      <div id="blank-picker-title">Choose a Letter</div>
+      <div id="blank-picker-grid"></div>
+    </div>
   </div>
 </div>
 
