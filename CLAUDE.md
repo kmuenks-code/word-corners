@@ -50,6 +50,12 @@ deliberate act that ships (and, via Workers Builds, deploys) to
 production. Never commit straight to `master` — a push there is a
 production deploy.
 
+GitHub's default branch is `dev` as well, so a fresh clone and any new
+PR start there rather than on production. That is only a GitHub setting:
+Workers Builds keeps its own "production branch" per Worker, and the
+`word-corners` build still watches `master` — changing one does not
+change the other.
+
 Commands, all from the project root:
 
 | Command | What it does |
