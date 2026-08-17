@@ -82,6 +82,15 @@ export function renderBestScore(rowEl, valueEl, score) {
   if (hasScore) valueEl.textContent = score;
 }
 
+// Shows the top-bar environment badge with the given label, or hides it
+// when the label is empty — production passes nothing and the badge stays
+// exactly as the markup left it: hidden and blank. Deciding *which* label
+// (or none) belongs to js/env.js; this only draws it.
+export function renderEnvBadge(badgeEl, label) {
+  badgeEl.textContent = label || '';
+  badgeEl.hidden = !label;
+}
+
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 // Builds the 26 letter buttons in the blank-letter picker once. Callers

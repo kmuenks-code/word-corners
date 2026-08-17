@@ -9,6 +9,10 @@
 <body>
 <div id="board">
   <header id="top-bar">
+    <!-- Filled in by js/main.js on every non-production deploy (see
+         js/env.js). Left empty and hidden in markup so production never
+         flashes a badge before the module runs. -->
+    <span id="env-badge" hidden></span>
     <img id="game-logo" src="img/logo.png" alt="Word Corners">
     <div id="score-badge">
       <span id="score-label">Score</span>

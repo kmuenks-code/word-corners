@@ -6,6 +6,23 @@
 #
 # Anything outside `public/` — this file, db/, src/, CLAUDE.md, .claude/ —
 # is never served to the browser.
+#
+# TWO ENVIRONMENTS, and the top-level block below is the *production* one:
+#
+#   production  word-corners          → word-corners.muenks-kevin.workers.dev
+#               DB = word-corners
+#               Deployed automatically by Cloudflare Workers Builds on every
+#               push to `master`. Do not deploy it by hand casually.
+#
+#   staging     word-corners-staging  → word-corners-staging.muenks-kevin.workers.dev
+#               DB = word-corners-staging  ([env.staging] at the bottom)
+#               The default target for day-to-day work: `npm run deploy`
+#               (= `npm run deploy:staging`). See CLAUDE.md "Environments".
+#
+# Both environments run the same code from src/ and serve the same files
+# from public/ — the only differences are the Worker name and which D1
+# database `env.DB` points at, so a game finished on staging can never
+# land in production's leaderboard.
 
 name = "word-corners"
 main = "src/index.js"
@@ -20,3 +37,23 @@ binding = "ASSETS"
 binding = "DB"
 database_name = "word-corners"
 database_id = "809a1ff5-34fd-4a0e-b95e-07e796a75fa5"
+
+# ---------------------------------------------------------------------
+# Staging — the test environment. `wrangler deploy --env staging`.
+#
+# `assets` and `d1_databases` are *not* inherited from the top level by a
+# named environment (bindings never are), so both are repeated here. If
+# either block goes missing the staging Worker either serves nothing or,
+# worse, silently falls back to no DB binding at all.
+# ---------------------------------------------------------------------
+[env.staging]
+name = "word-corners-staging"
+
+[env.staging.assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "word-corners-staging"
+database_id = "3d70c462-eac9-4554-aef1-d96e7cba76a5"

@@ -118,6 +118,37 @@ body {
   z-index: 15;
 }
 
+/* Non-production marker (staging / localhost). Sits at the far left of the
+   top bar — margin-right:auto pushes the score badge back to the right edge
+   under #top-bar's flex-end — and is small enough not to crowd the centered,
+   absolutely positioned logo. Gold, matching the blank tile, since that's
+   already the board's "this is special" color.
+   The [hidden] rule re-asserts the hide over the inline-flex above it: an
+   author declaration beats the UA stylesheet's [hidden] { display: none },
+   so without it the badge would show on production. Same trap as
+   .row-slot / #blank-picker / .best-row below. */
+#env-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: auto;
+  padding: clamp(2px, 0.8vw, 5px) clamp(6px, 2.2vw, 11px);
+  border-radius: 999px;
+  background: linear-gradient(165deg, #F2AE5E 0%, var(--accent) 62%, #C97A28 100%);
+  color: var(--text-light);
+  font-size: clamp(0.5rem, 2.1vw, 0.66rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  box-shadow:
+    0 3px 0 -1px rgba(12, 58, 68, 0.18),
+    0 4px 9px var(--shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+#env-badge[hidden] {
+  display: none;
+}
+
 #game-logo {
   position: absolute;
   left: 50%;

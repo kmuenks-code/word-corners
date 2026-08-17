@@ -1,5 +1,7 @@
 // The only module that talks to the server. No game logic, no DOM.
-// Backed by Cloudflare Pages Functions in /functions/api (see wrangler.toml).
+// Backed by the same Worker that served this page, in src/api/ — so these
+// are same-origin paths, and a staging build talks to the staging database
+// automatically, with no environment switch to get wrong here.
 //
 // Every call here is best-effort: the game must stay fully playable with no
 // network, an unreachable API, or a cold database. Failures resolve to null

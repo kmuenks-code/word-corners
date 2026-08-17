@@ -17,6 +17,7 @@ import {
   recordBlankEarned,
 } from './gameState.js';
 import { submitGame, fetchHighScores } from './api.js';
+import { isProduction } from './env.js';
 import { getRandomLetter } from './letterSource.js';
 import { loadWordList, isValidWord, hasWordWithPrefix } from './wordValidator.js';
 import { scoreWord } from './scoring.js';
@@ -39,6 +40,7 @@ import {
   renderBlankBubble,
   setChoicesBlocked,
   renderBestScore,
+  renderEnvBadge,
 } from './ui.js';
 
 const CHOICE_COUNT = 2;
@@ -89,6 +91,7 @@ const personalBestRowEl = document.getElementById('personal-best-row');
 const personalBestEl = document.getElementById('personal-best');
 const globalBestRowEl = document.getElementById('global-best-row');
 const globalBestEl = document.getElementById('global-best');
+const envBadgeEl = document.getElementById('env-badge');
 
 function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
@@ -323,6 +326,11 @@ function resetGame() {
 }
 
 async function start() {
+  // Anything that isn't the production host — staging, `npm run dev`,
+  // a preview URL — says so in the top bar, so a test session can't be
+  // mistaken for the real game (or vice versa).
+  renderEnvBadge(envBadgeEl, isProduction() ? null : 'Test');
+
   choiceLetterEls.forEach((el) => renderLetter(el, '…')); // loading indicator
   renderLetter(previewLetterEl, '…');
 
