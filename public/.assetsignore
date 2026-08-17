@@ -1,0 +1,13 @@
+# Files under public/ that must NOT be uploaded as browser-reachable assets.
+#
+# wrangler uploads everything in this directory (see [assets] in
+# wrangler.toml) and does NOT read .gitignore, so editor and OS droppings
+# that land here would otherwise be deployed and publicly served. Visual
+# Studio in particular writes a .vs/ index folder next to whatever source
+# tree is open — including inside public/ — and its .vsidx files are held
+# open while VS is running, which fails the deploy outright with
+# "EBUSY: resource busy or locked" rather than anything self-explanatory.
+.vs/
+**/.vs/
+.DS_Store
+Thumbs.db
