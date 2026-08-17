@@ -15,7 +15,17 @@ import {
   markGameStarted,
   recordWordSubmitted,
   recordBlankEarned,
+  setGameOver,
 } from './gameState.js';
+import {
+  GameEvent,
+  createObjectiveRuntime,
+  NO_OBJECTIVES,
+  createMode,
+  listGameModes,
+  listDifficulties,
+  objectiveCountFor,
+} from './objectives/index.js';
 import { submitGame, fetchHighScores } from './api.js';
 import { isProduction } from './env.js';
 import { getRandomLetter } from './letterSource.js';
@@ -41,6 +51,18 @@ import {
   setChoicesBlocked,
   renderBestScore,
   renderEnvBadge,
+  renderModeOptions,
+  renderDifficultyOptions,
+  showSplash,
+  hideSplash,
+  renderSplashStep,
+  renderObjectiveFlag,
+  pulseObjectiveFlag,
+  renderObjectiveList,
+  showObjectivePanel,
+  hideObjectivePanel,
+  renderVerdict,
+  renderGameOverObjectives,
 } from './ui.js';
 
 const CHOICE_COUNT = 2;
@@ -48,10 +70,26 @@ const BLANK_AWARD_LENGTH = 5;
 const MIN_WORD_LENGTH = 3;
 
 let state = createGameState();
+// Reads the game's events, never writes to it. Everything it knows arrives
+// through objectives.emit(); see js/objectives/events.js for the vocabulary.
+// Starts objective-free; the splash swaps in the chosen mode via
+// objectives.reset(mode) before the first turn is dealt, so nothing is
+// tracked until a player has actually picked something.
+const objectives = createObjectiveRuntime(NO_OBJECTIVES);
+// Which mode button is awaiting a difficulty choice on the splash. Set when
+// a mode that uses difficulty is tapped, cleared once the game starts.
+let pendingModeId = null;
+// The last rendered objective progress, as a cheap comparable string. Used
+// to tell "an objective actually advanced" from the far more frequent "some
+// event arrived", so the flag only bumps when there's something to notice.
+let lastObjectiveSignature = '';
 // Single-level undo: records enough to reverse the most recent drop.
 // Cleared whenever a word is submitted, since that's a checkpoint.
 // { type: 'choice', index, corner, closedNow, prevChoiceLetter, prevNextLetter }
 // or { type: 'blank', corner, closedNow } for a blank-letter placement.
+// Both also carry objectiveMark — the objective runtime's position in its
+// event stream just before the move, which is how undo reverses objective
+// progress too (see js/objectives/runtime.js).
 let lastMove = null;
 // Set while the blank-letter picker is open, to the corner it was
 // dropped on; consumed (and cleared) when a letter is chosen.
@@ -92,6 +130,19 @@ const personalBestEl = document.getElementById('personal-best');
 const globalBestRowEl = document.getElementById('global-best-row');
 const globalBestEl = document.getElementById('global-best');
 const envBadgeEl = document.getElementById('env-badge');
+const gameOverLabelEl = document.getElementById('game-over-label');
+const gameOverObjectivesEl = document.getElementById('game-over-objectives');
+const splashEl = document.getElementById('splash');
+const splashModesEl = document.getElementById('splash-modes');
+const splashDifficultyEl = document.getElementById('splash-difficulty');
+const splashModeOptionsEl = document.getElementById('splash-mode-options');
+const splashDifficultyOptionsEl = document.getElementById('splash-difficulty-options');
+const splashBackBtn = document.getElementById('splash-back');
+const objectiveFlagEl = document.getElementById('objective-flag');
+const objectiveFlagBadgeEl = document.getElementById('objective-flag-badge');
+const objectivePanelEl = document.getElementById('objective-panel');
+const objectiveListEl = document.getElementById('objective-list');
+const objectivePanelCloseBtn = document.getElementById('objective-panel-close');
 
 function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
@@ -131,12 +182,106 @@ function renderBests() {
   renderBestScore(globalBestRowEl, globalBestEl, cachedBests.globalBest);
 }
 
-// All four corners are closed. Shows the overlay right away with whatever
+// ---------- Objective HUD ----------
+
+// Everything the flag and its panel show comes from objectives.snapshot()
+// and nothing else — no game state is read here, which is what keeps the
+// objective layering intact once it has a UI (see js/objectives/index.js).
+// Subscribed to the runtime in start(), so it re-renders on every change
+// including the rewind an undo performs.
+function renderObjectiveState() {
+  const list = objectives.snapshot().objectives;
+  const done = list.filter((o) => o.status === 'complete').length;
+
+  renderObjectiveFlag(objectiveFlagEl, objectiveFlagBadgeEl, {
+    visible: list.length > 0,
+    done,
+    total: list.length,
+  });
+  renderObjectiveList(objectiveListEl, list);
+
+  // The runtime notifies on every event, but most events move nothing an
+  // objective cares about. Bumping the flag only when this signature
+  // changes keeps it meaningful — it fires on real progress, not on every
+  // letter placed. An empty previous signature means "first render of this
+  // game", which shouldn't pulse.
+  const signature = list.map((o) => `${o.current}:${o.status}`).join('|');
+  if (signature !== lastObjectiveSignature) {
+    if (lastObjectiveSignature !== '') pulseObjectiveFlag(objectiveFlagEl);
+    lastObjectiveSignature = signature;
+  }
+}
+
+// ---------- Splash ----------
+
+function showModeStep() {
+  pendingModeId = null;
+  renderSplashStep(splashModesEl, splashDifficultyEl, 'modes');
+}
+
+// The tier buttons are rebuilt per mode, since how many objectives a tier
+// deals is a property of the mode's pool — Endless would say "0" for all
+// four, which is exactly why it never reaches this step.
+function showDifficultyStep(modeId) {
+  pendingModeId = modeId;
+  renderDifficultyOptions(
+    splashDifficultyOptionsEl,
+    listDifficulties().map((tier) => {
+      const count = objectiveCountFor(modeId, tier.id);
+      return { ...tier, note: `${count} objective${count === 1 ? '' : 's'}` };
+    })
+  );
+  renderSplashStep(splashModesEl, splashDifficultyEl, 'difficulty');
+}
+
+function handleModeChosen(modeId) {
+  const mode = listGameModes().find((m) => m.id === modeId);
+  if (!mode) return;
+  if (mode.usesDifficulty) {
+    showDifficultyStep(modeId);
+    return;
+  }
+  startGame(createMode(modeId));
+}
+
+function handleDifficultyChosen(difficulty) {
+  if (!pendingModeId) return;
+  startGame(createMode(pendingModeId, difficulty));
+}
+
+// Where "New Game" goes: every game begins from the mode choice, which is
+// also the only way to switch modes without reloading.
+function returnToSplash() {
+  hideGameOver(document.body);
+  hideObjectivePanel(objectivePanelEl);
+  showModeStep();
+  showSplash(splashEl);
+}
+
+// The game is over — all four corners closed, or an objective mode
+// declaring it won or lost. Shows the overlay right away with whatever
 // bests we already know, then posts this game and re-renders with the bests
 // the server computed after storing it — so a new personal or all-time high
 // shows up on the same screen that set it. A failed post is silent: the
 // overlay just keeps showing the previous (or no) bests.
 function endGame() {
+  // Covers the objective-mode ending too, where the game is over with
+  // corners still open and nothing else would have set this.
+  setGameOver(state);
+  // Both are idempotent, so a second endGame() call can't double-count.
+  // finish() resolves the mode's verdict and returns the final snapshot:
+  // enduring objectives that never failed become complete, unfinished
+  // targets become failed.
+  objectives.emit(GameEvent.GAME_ENDED, { score: state.score });
+  const final = objectives.finish();
+
+  // 'won' can only come from an objective mode. An endless game finishes
+  // 'active' — it was never a contest — and keeps the neutral heading, so
+  // Endless reads exactly as it always has.
+  renderVerdict(gameOverLabelEl, final.status === 'won' ? 'You Win!' : 'Game Over');
+  renderGameOverObjectives(gameOverObjectivesEl, final.objectives);
+  renderObjectiveState();
+
   renderGameOver(document.body, finalScoreEl, state.score);
   renderBests();
 
@@ -149,8 +294,16 @@ function endGame() {
   });
 }
 
+// The game is over when the board says so, or when the objective mode
+// declares a winner or a loser. With NO_OBJECTIVES the second half is
+// always false, leaving today's behavior untouched.
+function maybeEndGame() {
+  if (state.gameOver || objectives.status !== 'active') endGame();
+}
+
 function initRound() {
   markGameStarted(state);
+  objectives.emit(GameEvent.GAME_STARTED);
   const letters = [];
   for (let i = 0; i < CHOICE_COUNT; i++) {
     const letter = getRandomLetter(letters);
@@ -166,6 +319,7 @@ function handleDrop(index, targetName) {
   if (state.blankPending) return;
   if (state.closedCorners[targetName]) return;
 
+  const objectiveMark = objectives.mark();
   const prevChoiceLetter = state.choices[index];
   const prevNextLetter = state.nextLetter;
 
@@ -173,22 +327,27 @@ function handleDrop(index, targetName) {
   const word = state.corners[targetName];
   const cornerEl = cornerElFor(targetName);
   renderCorner(cornerEl, word, state.blankIndices[targetName]);
+  objectives.emit(GameEvent.LETTER_PLACED, {
+    corner: targetName,
+    letter: prevChoiceLetter,
+    word,
+    blank: false,
+  });
 
   let closedNow = false;
   if (!hasWordWithPrefix(word)) {
     closeCorner(state, targetName);
     renderClosedCorner(cornerEl);
+    objectives.emit(GameEvent.CORNER_CLOSED, { corner: targetName, word });
     closedNow = true;
   }
 
   advanceChoice(index);
 
-  lastMove = { type: 'choice', index, corner: targetName, closedNow, prevChoiceLetter, prevNextLetter };
+  lastMove = { type: 'choice', index, corner: targetName, closedNow, prevChoiceLetter, prevNextLetter, objectiveMark };
   renderUndoAvailability(undoBtn, true);
 
-  if (state.gameOver) {
-    endGame();
-  }
+  maybeEndGame();
 }
 
 // Awards a blank/star letter whenever a valid word of BLANK_AWARD_LENGTH+
@@ -202,10 +361,11 @@ function renderBlankState() {
 
 // hadBlank: whether the submitted word already contained a blank-letter —
 // a word that used a blank can't earn another one, even at 5+ letters.
-function awardBlankIfEligible(word, hadBlank) {
+function awardBlankIfEligible(cornerName, word, hadBlank) {
   if (hadBlank || word.length < BLANK_AWARD_LENGTH) return;
   setBlankPending(state, true);
   recordBlankEarned(state);
+  objectives.emit(GameEvent.BLANK_AWARDED, { corner: cornerName, word });
   renderBlankState();
 }
 
@@ -220,15 +380,18 @@ function handleBlankLetterChosen(letter) {
   const targetName = pendingBlankCorner;
   if (!targetName) return;
 
+  const objectiveMark = objectives.mark();
   appendBlankLetterToCorner(state, targetName, letter);
   const word = state.corners[targetName];
   const cornerEl = cornerElFor(targetName);
   renderCorner(cornerEl, word, state.blankIndices[targetName]);
+  objectives.emit(GameEvent.LETTER_PLACED, { corner: targetName, letter, word, blank: true });
 
   let closedNow = false;
   if (!hasWordWithPrefix(word)) {
     closeCorner(state, targetName);
     renderClosedCorner(cornerEl);
+    objectives.emit(GameEvent.CORNER_CLOSED, { corner: targetName, word });
     closedNow = true;
   }
 
@@ -237,16 +400,18 @@ function handleBlankLetterChosen(letter) {
   pendingBlankCorner = null;
   hideBlankPicker(blankPickerEl);
 
-  lastMove = { type: 'blank', corner: targetName, closedNow };
+  lastMove = { type: 'blank', corner: targetName, closedNow, objectiveMark };
   renderUndoAvailability(undoBtn, true);
 
-  if (state.gameOver) {
-    endGame();
-  }
+  maybeEndGame();
 }
 
 function handleUndo() {
   if (!lastMove || state.gameOver) return;
+
+  // Both undo paths reverse exactly one move, so both rewind the objective
+  // stream the same way — objectives never need their own undo branch.
+  objectives.rewindTo(lastMove.objectiveMark);
 
   if (lastMove.type === 'blank') {
     const { corner, closedNow } = lastMove;
@@ -297,31 +462,60 @@ function handleSubmit(cornerName) {
     recordWordSubmitted(state, word.length);
     renderScore(scoreEl, state.score);
     showWordFeedback(cornerEl, word.length, points, word.length >= BLANK_AWARD_LENGTH && !hadBlank);
+    objectives.emit(GameEvent.WORD_SCORED, {
+      corner: cornerName,
+      word,
+      length: word.length,
+      points,
+      usedBlank: hadBlank,
+    });
     clearCorner(state, cornerName);
     renderCorner(cornerEl, '');
     lastMove = null;
+    // Same checkpoint as clearing lastMove: nothing before this can be
+    // undone any more, so the objective runtime can drop its event log.
+    objectives.commit();
     renderUndoAvailability(undoBtn, false);
-    awardBlankIfEligible(word, hadBlank);
+    awardBlankIfEligible(cornerName, word, hadBlank);
+    maybeEndGame();
   } else {
+    objectives.emit(GameEvent.WORD_REJECTED, {
+      corner: cornerName,
+      word,
+      length: word.length,
+      reason: word.length < MIN_WORD_LENGTH ? 'tooShort' : 'notAWord',
+    });
     flashInvalid(cornerEl);
   }
 }
 
-function resetGame() {
+// Starts a fresh game under `mode` — the single entry point for beginning
+// play, whichever splash path got here. objectives.reset(mode) re-runs the
+// mode's selectObjectives(), so a pool-backed mode draws a new random set
+// every game rather than replaying the one it was built with.
+function startGame(mode) {
   state = createGameState();
   lastMove = null;
   pendingBlankCorner = null;
   bankedPreviewLetter = null;
   gameRecorded = false;
+  pendingModeId = null;
+  // Cleared before reset so the first render of the new set can't be
+  // mistaken for progress and pulse the flag.
+  lastObjectiveSignature = '';
+  objectives.reset(mode);
   renderUndoAvailability(undoBtn, false);
   hideGameOver(document.body);
   hideBlankPicker(blankPickerEl);
+  hideObjectivePanel(objectivePanelEl);
   renderBlankState();
   renderScore(scoreEl, state.score);
   cornerEls.forEach((cornerEl) => {
     resetCornerVisuals(cornerEl);
     renderCorner(cornerEl, '');
   });
+  renderObjectiveState();
+  hideSplash(splashEl);
   initRound();
 }
 
@@ -355,10 +549,36 @@ async function start() {
   cornerEls.forEach((cornerEl) => {
     cornerEl.addEventListener('click', () => handleSubmit(cornerEl.dataset.corner));
   });
-  newGameBtn.addEventListener('click', resetGame);
+  newGameBtn.addEventListener('click', returnToSplash);
   undoBtn.addEventListener('click', handleUndo);
 
-  initRound();
+  // One delegated listener per option group, so rebuilding the buttons
+  // never leaves stale handlers behind.
+  splashModeOptionsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.splash-btn');
+    if (btn) handleModeChosen(btn.dataset.mode);
+  });
+  splashDifficultyOptionsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.splash-btn');
+    if (btn) handleDifficultyChosen(btn.dataset.difficulty);
+  });
+  splashBackBtn.addEventListener('click', showModeStep);
+
+  objectiveFlagEl.addEventListener('click', () => showObjectivePanel(objectivePanelEl));
+  objectivePanelCloseBtn.addEventListener('click', () => hideObjectivePanel(objectivePanelEl));
+  // Backdrop dismiss — informational panel, unlike the blank picker, which
+  // deliberately has no way out.
+  objectivePanelEl.addEventListener('click', (e) => {
+    if (e.target === objectivePanelEl) hideObjectivePanel(objectivePanelEl);
+  });
+  // Re-render whenever the runtime changes, undo rewinds included.
+  objectives.onChange(renderObjectiveState);
+
+  // Only now are the mode buttons drawn: the dictionary is loaded, so the
+  // first tap can start a real game rather than one whose word checks throw.
+  renderModeOptions(splashModeOptionsEl, listGameModes());
+  showModeStep();
+  showSplash(splashEl);
 }
 
 start();

@@ -100,9 +100,34 @@
     <span id="hint-text">How to Play</span>
   </button>
 
+  <!-- Objective mode only: a flag tabbed onto the right edge, mid-board.
+       main.js shows it when the chosen mode actually has objectives, and
+       the badge tracks how many are done. Tapping opens #objective-panel. -->
+  <button id="objective-flag" type="button" hidden aria-label="Objectives" title="Objectives">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+         stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 21V4"/>
+      <path d="M6 4.5h11l-2.6 4 2.6 4H6z" fill="currentColor" stroke="none"/>
+    </svg>
+    <span id="objective-flag-badge">0/0</span>
+  </button>
+
+  <!-- Dismissible, unlike #blank-picker: this one is informational, so
+       both the backdrop and the close button shut it. -->
+  <div id="objective-panel" hidden>
+    <div id="objective-panel-card">
+      <div id="objective-panel-title">Objectives</div>
+      <ul id="objective-list"></ul>
+      <button id="objective-panel-close" type="button">Close</button>
+    </div>
+  </div>
+
   <div id="game-over">
     <div id="game-over-label">Game Over</div>
     <div id="final-score-row">Final Score: <span id="final-score">0</span></div>
+    <!-- Objective mode only: the same list the flag panel shows, resolved
+         to its final ✓/✗ state. Hidden (and empty) in Endless. -->
+    <ul id="game-over-objectives" hidden></ul>
     <!-- Filled from the database at game over (see js/api.js). Hidden while
          the request is in flight, and stays hidden if it fails — the overlay
          degrades to just the final score. -->
@@ -123,6 +148,32 @@
     <div id="blank-picker-card">
       <div id="blank-picker-title">Choose a Letter</div>
       <div id="blank-picker-grid"></div>
+    </div>
+  </div>
+
+  <!-- The opening screen, and where "New Game" returns to. Deliberately
+       NOT hidden in markup: it covers the board from first paint, so the
+       player never glimpses a live board before choosing a mode. Both
+       button groups are built by js/ui.js from the mode and difficulty
+       tables, so adding either shows up here with no markup change. -->
+  <div id="splash">
+    <!-- Outside the card on purpose: the logo art is light-on-teal, so it
+         disappears against the card's cream and needs the teal backdrop. -->
+    <img id="splash-logo" src="img/logo.png" alt="Word Corners">
+
+    <div id="splash-card">
+      <div class="splash-step" id="splash-modes">
+        <div class="splash-step-title">Choose a Mode</div>
+        <!-- Replaced by js/ui.js once the word list has loaded, so the
+             first tap can't start a game whose word checks would throw. -->
+        <div id="splash-mode-options"><div class="splash-loading">Loading…</div></div>
+      </div>
+
+      <div class="splash-step" id="splash-difficulty" hidden>
+        <div class="splash-step-title">Choose a Difficulty</div>
+        <div id="splash-difficulty-options"></div>
+        <button id="splash-back" type="button">Back</button>
+      </div>
     </div>
   </div>
 </div>

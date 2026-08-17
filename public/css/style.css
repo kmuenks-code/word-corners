@@ -889,3 +889,410 @@ body.game-over #game-over {
     0 3px 6px var(--shadow-soft),
     inset 0 2px 3px rgba(255, 255, 255, 0.35);
 }
+
+/* ---------- Objective flag ---------- */
+
+/* A tab on the right edge of the board, vertically centred — clear of the
+   score badge up top and the hint bar down bottom. Shown only in a mode
+   that actually has objectives (renderObjectiveFlag in js/ui.js), so
+   Endless looks exactly as it always did. */
+#objective-flag {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: clamp(38px, 10vw, 52px);
+  padding: 9px 6px 7px;
+  border: none;
+  border-radius: 14px 0 0 14px;
+  background: radial-gradient(circle at 30% 22%, #FFD873 0%, var(--accent) 55%, #C06E1C 100%);
+  box-shadow:
+    -3px 4px 0 -1px rgba(12, 58, 68, 0.22),
+    -2px 8px 14px var(--shadow-soft),
+    inset 0 2px 3px rgba(255, 255, 255, 0.42);
+  color: var(--text-light);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+/* The button's own `display: flex` would otherwise beat the UA stylesheet's
+   [hidden] rule — same trap as .row-slot and #blank-picker. */
+#objective-flag[hidden] {
+  display: none;
+}
+
+#objective-flag svg {
+  width: clamp(17px, 4.6vw, 23px);
+  height: clamp(17px, 4.6vw, 23px);
+}
+
+#objective-flag-badge {
+  font-size: clamp(0.6rem, 2.1vw, 0.72rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+#objective-flag:active {
+  transform: translateY(-50%) translateX(3px);
+  box-shadow:
+    -1px 2px 0 -1px rgba(12, 58, 68, 0.22),
+    -1px 4px 8px var(--shadow-soft),
+    inset 0 2px 3px rgba(255, 255, 255, 0.35);
+}
+
+/* Every objective done — the flag goes teal to say so at a glance. */
+#objective-flag.all-complete {
+  background: radial-gradient(circle at 30% 22%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
+}
+
+/* Fired by pulseObjectiveFlag() only when an objective's progress actually
+   changed, so it marks real progress rather than every letter placed. */
+#objective-flag.pulse {
+  animation: flag-bump 0.42s ease;
+}
+
+@keyframes flag-bump {
+  0%   { transform: translateY(-50%) scale(1); }
+  35%  { transform: translateY(-50%) scale(1.16); }
+  100% { transform: translateY(-50%) scale(1); }
+}
+
+/* The game-over card carries its own objective summary, so the flag would
+   be redundant there (and would sit over the overlay's backdrop). */
+body.game-over #objective-flag {
+  display: none;
+}
+
+/* ---------- Objective panel ---------- */
+
+/* Informational, so unlike #blank-picker it dismisses — backdrop click and
+   the close button both work (see js/main.js). */
+#objective-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--edge-gap);
+  background: rgba(12, 58, 68, 0.45);
+}
+
+#objective-panel[hidden] {
+  display: none;
+}
+
+#objective-panel-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  width: min(100%, 340px);
+  max-height: 80%;
+  overflow-y: auto;
+  background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
+  border-radius: 24px;
+  box-shadow:
+    0 8px 0 -1px rgba(12, 58, 68, 0.14),
+    0 20px 36px var(--shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
+  padding: 22px 24px;
+}
+
+#objective-panel-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+#objective-panel-close {
+  align-self: center;
+  padding: 9px 24px;
+  border: none;
+  border-radius: 999px;
+  background: radial-gradient(circle at 34% 20%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.3),
+    0 7px 12px var(--shadow-soft),
+    inset 0 2px 3px rgba(255, 255, 255, 0.4);
+  color: var(--text-light);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+/* ---------- Objective rows (shared: panel + game-over summary) ---------- */
+
+#objective-list,
+#game-over-objectives {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+/* The game-over copy sits under the score with the same hairline rule the
+   best-scores block uses, and collapses entirely in Endless. */
+#game-over-objectives {
+  width: 100%;
+  padding: 12px 0 2px;
+  border-top: 1px solid rgba(23, 78, 89, 0.16);
+}
+
+#game-over-objectives[hidden] {
+  display: none;
+}
+
+.objective-row {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.objective-status {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.objective-row.complete .objective-status {
+  color: #2E9E6B;
+}
+
+.objective-row.failed .objective-status {
+  color: #C4584F;
+}
+
+.objective-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.objective-desc {
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.objective-row.complete .objective-desc {
+  opacity: 0.62;
+}
+
+.objective-meter {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(23, 78, 89, 0.14);
+  overflow: hidden;
+}
+
+.objective-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #F2AE5E 0%, var(--accent) 100%);
+  transition: width 0.28s ease;
+}
+
+.objective-row.complete .objective-meter-fill {
+  background: linear-gradient(90deg, #5CC094 0%, #2E9E6B 100%);
+}
+
+.objective-progress {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.objective-row.complete .objective-progress {
+  color: #2E9E6B;
+}
+
+/* ---------- Splash ---------- */
+
+/* The opening screen. Above every other overlay (blank picker is 50, the
+   objective panel 55) because it is the one thing that must never be
+   played through — it covers the board from first paint until a mode is
+   chosen, and "New Game" returns here. */
+#splash {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 4vh, 30px);
+  padding: var(--edge-gap);
+  background:
+    radial-gradient(120% 62% at 50% 100%, rgba(12, 58, 68, 0.30) 0%, rgba(12, 58, 68, 0.10) 70%),
+    radial-gradient(130% 90% at 50% -8%, var(--bg-light) 0%, var(--bg) 46%, var(--bg-deep) 100%);
+}
+
+#splash[hidden] {
+  display: none;
+}
+
+#splash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: min(100%, 330px);
+  background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
+  border-radius: 26px;
+  box-shadow:
+    0 8px 0 -1px rgba(12, 58, 68, 0.14),
+    0 20px 36px var(--shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
+  padding: 26px 24px 24px;
+}
+
+/* Sits on the teal backdrop above the card, not inside it — the art is
+   light-on-teal and vanishes against the card's cream. */
+#splash-logo {
+  width: min(62%, 240px);
+  height: auto;
+  filter: drop-shadow(0 6px 12px rgba(12, 58, 68, 0.28));
+}
+
+.splash-step {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+
+/* .splash-step's `display: flex` would otherwise beat the UA stylesheet's
+   [hidden] rule and show both steps at once. */
+.splash-step[hidden] {
+  display: none;
+}
+
+.splash-step-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  text-align: center;
+}
+
+#splash-mode-options,
+#splash-difficulty-options {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.splash-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 16px;
+  background: radial-gradient(circle at 32% 18%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
+  box-shadow:
+    0 5px 0 -1px rgba(12, 58, 68, 0.3),
+    0 9px 16px var(--shadow-soft),
+    inset 0 2px 3px rgba(255, 255, 255, 0.4);
+  color: var(--text-light);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.splash-btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 2px 0 -1px rgba(12, 58, 68, 0.3),
+    0 4px 8px var(--shadow-soft),
+    inset 0 2px 3px rgba(255, 255, 255, 0.35);
+}
+
+.splash-btn-name {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.splash-btn-note {
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  opacity: 0.82;
+  text-align: center;
+}
+
+/* Difficulty tiers read as a ladder, so they get the lighter cream
+   treatment and let the gold "N objectives" note carry the weight. */
+.difficulty-btn {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 11px 18px;
+  background: linear-gradient(165deg, #FFFDF6 0%, var(--corner-bg) 60%, var(--corner-bg-deep) 100%);
+  box-shadow:
+    0 4px 0 -1px rgba(12, 58, 68, 0.16),
+    0 7px 12px var(--shadow-soft),
+    inset 0 2px 0 rgba(255, 255, 255, 0.9);
+  color: var(--text);
+}
+
+.difficulty-btn .splash-btn-name {
+  font-size: 0.98rem;
+}
+
+.difficulty-btn .splash-btn-note {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent);
+  opacity: 1;
+}
+
+#splash-back {
+  align-self: center;
+  margin-top: 2px;
+  padding: 6px 18px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.splash-loading {
+  padding: 14px 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  opacity: 0.5;
+  text-align: center;
+}

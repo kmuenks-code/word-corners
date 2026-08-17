@@ -122,3 +122,145 @@ export function renderBlankBubble(slotEl, pending) {
 export function setChoicesBlocked(bubbleEls, blocked) {
   bubbleEls.forEach((el) => el.classList.toggle('blocked', blocked));
 }
+
+/* ---------- Splash ---------- */
+
+// Both option groups are built from the mode/difficulty tables rather than
+// written into markup, so adding a mode or a tier shows up on the splash
+// with no HTML change. Callers wire one delegated click listener per
+// container and read the id off dataset.
+export function renderModeOptions(containerEl, modes) {
+  containerEl.innerHTML = '';
+  modes.forEach((mode) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'splash-btn';
+    btn.dataset.mode = mode.id;
+    btn.innerHTML = `<span class="splash-btn-name"></span><span class="splash-btn-note"></span>`;
+    btn.querySelector('.splash-btn-name').textContent = mode.label;
+    btn.querySelector('.splash-btn-note').textContent = mode.blurb;
+    containerEl.appendChild(btn);
+  });
+}
+
+// Each tier shows how many objectives it deals, so the player picks with
+// that in front of them rather than discovering it on the board. `note` is
+// supplied by the caller (main.js asks objectiveCountFor) — this stays a
+// pure renderer and doesn't know what a mode is.
+export function renderDifficultyOptions(containerEl, difficulties) {
+  containerEl.innerHTML = '';
+  difficulties.forEach((difficulty) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'splash-btn difficulty-btn';
+    btn.dataset.difficulty = difficulty.id;
+    btn.innerHTML = `<span class="splash-btn-name"></span><span class="splash-btn-note"></span>`;
+    btn.querySelector('.splash-btn-name').textContent = difficulty.label;
+    btn.querySelector('.splash-btn-note').textContent = difficulty.note ?? '';
+    containerEl.appendChild(btn);
+  });
+}
+
+export function showSplash(splashEl) {
+  splashEl.hidden = false;
+}
+
+export function hideSplash(splashEl) {
+  splashEl.hidden = true;
+}
+
+// Which of the splash's two steps is showing. 'modes' or 'difficulty'.
+export function renderSplashStep(modesEl, difficultyEl, step) {
+  modesEl.hidden = step !== 'modes';
+  difficultyEl.hidden = step !== 'difficulty';
+}
+
+/* ---------- Objectives ---------- */
+
+// The right-edge flag. Hidden outright in a mode with no objectives, so
+// Endless looks exactly as it always did.
+export function renderObjectiveFlag(flagEl, badgeEl, { visible, done, total }) {
+  flagEl.hidden = !visible;
+  if (!visible) return;
+  badgeEl.textContent = `${done}/${total}`;
+  flagEl.classList.toggle('all-complete', total > 0 && done === total);
+}
+
+// Briefly re-triggers the flag's bump animation. Called when an objective
+// advances, so progress made behind a closed panel still registers.
+export function pulseObjectiveFlag(flagEl) {
+  if (flagEl.hidden) return;
+  flagEl.classList.remove('pulse');
+  void flagEl.offsetWidth; // force reflow so the animation restarts
+  flagEl.classList.add('pulse');
+}
+
+// Renders a snapshot's objective array into a <ul>. Used for both the flag
+// panel and the game-over summary, which is why it takes the list element:
+// the two differ only in where they sit.
+//
+// `current` arrives raw from the runtime (a 214-point game against a
+// 150-point goal reports 214), so the meter clamps it while the numbers
+// print it as-is. An `enduring` objective's goal is a limit rather than a
+// target, so it gets no meter — a bar filling up would read as progress
+// when it actually means trouble.
+export function renderObjectiveList(listEl, objectives) {
+  listEl.innerHTML = '';
+  objectives.forEach((objective) => {
+    const { status, description, current, goal, enduring } = objective;
+    const item = document.createElement('li');
+    item.className = `objective-row ${status}`;
+
+    const mark = document.createElement('span');
+    mark.className = 'objective-status';
+    mark.setAttribute('aria-hidden', 'true');
+    mark.textContent = status === 'complete' ? '✓' : status === 'failed' ? '✗' : '';
+
+    const body = document.createElement('span');
+    body.className = 'objective-body';
+    const desc = document.createElement('span');
+    desc.className = 'objective-desc';
+    desc.textContent = description;
+    body.appendChild(desc);
+
+    if (!enduring) {
+      const meter = document.createElement('span');
+      meter.className = 'objective-meter';
+      const fill = document.createElement('span');
+      fill.className = 'objective-meter-fill';
+      const pct = goal > 0 ? Math.min(100, (current / goal) * 100) : 0;
+      fill.style.width = `${pct}%`;
+      meter.appendChild(fill);
+      body.appendChild(meter);
+    }
+
+    const progress = document.createElement('span');
+    progress.className = 'objective-progress';
+    progress.textContent = enduring ? `${current}/${goal}` : `${Math.min(current, goal)}/${goal}`;
+
+    item.append(mark, body, progress);
+    listEl.appendChild(item);
+  });
+}
+
+export function showObjectivePanel(panelEl) {
+  panelEl.hidden = false;
+}
+
+export function hideObjectivePanel(panelEl) {
+  panelEl.hidden = true;
+}
+
+// The game-over headline. Objective mode resolves to a real verdict; an
+// endless game was never a contest, so it keeps the neutral wording.
+export function renderVerdict(labelEl, text) {
+  labelEl.textContent = text;
+}
+
+// The objective summary on the game-over card — same list renderer, hidden
+// entirely when there were no objectives to report on.
+export function renderGameOverObjectives(listEl, objectives) {
+  listEl.hidden = objectives.length === 0;
+  if (objectives.length === 0) return;
+  renderObjectiveList(listEl, objectives);
+}

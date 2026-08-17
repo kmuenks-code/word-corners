@@ -118,6 +118,14 @@ export function clearHoldLetter(state) {
   state.holdLetter = null;
 }
 
+// Ends the game outright, regardless of how many corners are still open.
+// closeCorner below is the usual path there; this exists for the other
+// kind of ending — an objective mode declaring the game won or lost while
+// corners remain playable. Deliberately says nothing about *why*.
+export function setGameOver(state) {
+  state.gameOver = true;
+}
+
 // Marks a corner as dead (its word can never become legal). Also flips
 // gameOver once every corner is closed.
 export function closeCorner(state, corner) {
