@@ -1,0 +1,23 @@
+# Cloudflare Pages configuration.
+#
+# `public/` is everything served to the browser. Anything outside it — this
+# file, db/, CLAUDE.md, .claude/ — is deliberately not part of the deploy.
+# `functions/` is picked up automatically from the project root and becomes
+# the /api routes; it is not part of pages_build_output_dir.
+
+name = "word-corners"
+compatibility_date = "2026-08-16"
+pages_build_output_dir = "public"
+
+# D1 (Cloudflare's SQLite). Schema lives in db/schema.sql.
+# Top-level bindings are inherited by both the preview and production
+# environments, so branch deploys and production share one database — fine
+# for a prototype where all the data is wanted in one place. To split them,
+# move this block under [env.production] and add an [env.preview] copy
+# pointing at a second database.
+#
+# database_id comes from `npx wrangler d1 create word-corners` — paste it below.
+[[d1_databases]]
+binding = "DB"
+database_name = "word-corners"
+database_id = "809a1ff5-34fd-4a0e-b95e-07e796a75fa5"

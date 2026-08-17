@@ -1,1 +1,4 @@
 .vs/
+node_modules/
+# Local D1 database + wrangler state created by `npm run dev`.
+.wrangler/

@@ -99,6 +99,19 @@
   <div id="game-over">
     <div id="game-over-label">Game Over</div>
     <div id="final-score-row">Final Score: <span id="final-score">0</span></div>
+    <!-- Filled from the database at game over (see js/api.js). Hidden while
+         the request is in flight, and stays hidden if it fails — the overlay
+         degrades to just the final score. -->
+    <dl id="best-scores">
+      <div class="best-row" id="personal-best-row" hidden>
+        <dt>Your Best</dt>
+        <dd id="personal-best">—</dd>
+      </div>
+      <div class="best-row" id="global-best-row" hidden>
+        <dt>All-Time Best</dt>
+        <dd id="global-best">—</dd>
+      </div>
+    </dl>
     <button id="new-game-btn" type="button">New Game</button>
   </div>
 

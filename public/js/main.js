@@ -12,7 +12,11 @@ import {
   clearHoldLetter,
   removeLastLetter,
   reopenCorner,
+  markGameStarted,
+  recordWordSubmitted,
+  recordBlankEarned,
 } from './gameState.js';
+import { submitGame, fetchHighScores } from './api.js';
 import { getRandomLetter } from './letterSource.js';
 import { loadWordList, isValidWord, hasWordWithPrefix } from './wordValidator.js';
 import { scoreWord } from './scoring.js';
@@ -34,6 +38,7 @@ import {
   hideBlankPicker,
   renderBlankBubble,
   setChoicesBlocked,
+  renderBestScore,
 } from './ui.js';
 
 const CHOICE_COUNT = 2;
@@ -49,6 +54,13 @@ let lastMove = null;
 // Set while the blank-letter picker is open, to the corner it was
 // dropped on; consumed (and cleared) when a letter is chosen.
 let pendingBlankCorner = null;
+// Last known { globalBest, personalBest } from the server. Seeded at
+// startup and refreshed from the response to each game we post, so the
+// game-over overlay can render immediately instead of waiting on a request.
+// Both stay null until a request succeeds, which is also the offline state.
+let cachedBests = { globalBest: null, personalBest: null };
+// Guards against posting the same finished game twice.
+let gameRecorded = false;
 
 const cornerEls = Array.from(document.querySelectorAll('.corner'));
 const scoreEl = document.getElementById('score-value');
@@ -66,6 +78,10 @@ const blankSlotEl = document.getElementById('blank-slot');
 const blankBubbleEl = document.getElementById('blank-bubble');
 const blankPickerEl = document.getElementById('blank-picker');
 const blankPickerGridEl = document.getElementById('blank-picker-grid');
+const personalBestRowEl = document.getElementById('personal-best-row');
+const personalBestEl = document.getElementById('personal-best');
+const globalBestRowEl = document.getElementById('global-best-row');
+const globalBestEl = document.getElementById('global-best');
 
 function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
@@ -93,7 +109,31 @@ function advanceChoice(index) {
   drawNextLetter();
 }
 
+function renderBests() {
+  renderBestScore(personalBestRowEl, personalBestEl, cachedBests.personalBest);
+  renderBestScore(globalBestRowEl, globalBestEl, cachedBests.globalBest);
+}
+
+// All four corners are closed. Shows the overlay right away with whatever
+// bests we already know, then posts this game and re-renders with the bests
+// the server computed after storing it — so a new personal or all-time high
+// shows up on the same screen that set it. A failed post is silent: the
+// overlay just keeps showing the previous (or no) bests.
+function endGame() {
+  renderGameOver(document.body, finalScoreEl, state.score);
+  renderBests();
+
+  if (gameRecorded) return;
+  gameRecorded = true;
+  submitGame({ score: state.score, stats: state.stats }).then((bests) => {
+    if (!bests) return;
+    cachedBests = bests;
+    renderBests();
+  });
+}
+
 function initRound() {
+  markGameStarted(state);
   const letters = [];
   for (let i = 0; i < CHOICE_COUNT; i++) {
     const letter = getRandomLetter(letters);
@@ -130,7 +170,7 @@ function handleDrop(index, targetName) {
   renderUndoAvailability(undoBtn, true);
 
   if (state.gameOver) {
-    renderGameOver(document.body, finalScoreEl, state.score);
+    endGame();
   }
 }
 
@@ -148,6 +188,7 @@ function renderBlankState() {
 function awardBlankIfEligible(word, hadBlank) {
   if (hadBlank || word.length < BLANK_AWARD_LENGTH) return;
   setBlankPending(state, true);
+  recordBlankEarned(state);
   renderBlankState();
 }
 
@@ -183,7 +224,7 @@ function handleBlankLetterChosen(letter) {
   renderUndoAvailability(undoBtn, true);
 
   if (state.gameOver) {
-    renderGameOver(document.body, finalScoreEl, state.score);
+    endGame();
   }
 }
 
@@ -235,6 +276,7 @@ function handleSubmit(cornerName) {
     const hadBlank = state.blankIndices[cornerName].length > 0;
     const points = scoreWord(word);
     addScore(state, points);
+    recordWordSubmitted(state, word.length);
     renderScore(scoreEl, state.score);
     showWordFeedback(cornerEl, word.length, points, word.length >= BLANK_AWARD_LENGTH && !hadBlank);
     clearCorner(state, cornerName);
@@ -251,6 +293,7 @@ function resetGame() {
   state = createGameState();
   lastMove = null;
   pendingBlankCorner = null;
+  gameRecorded = false;
   renderUndoAvailability(undoBtn, false);
   hideGameOver(document.body);
   hideBlankPicker(blankPickerEl);
@@ -266,6 +309,13 @@ function resetGame() {
 async function start() {
   choiceLetterEls.forEach((el) => renderLetter(el, '…')); // loading indicator
   renderLetter(previewLetterEl, '…');
+
+  // Not awaited: the bests are only needed on the game-over overlay, so
+  // there's no reason to hold up the first turn on a network round trip.
+  fetchHighScores().then((bests) => {
+    if (bests) cachedBests = bests;
+  });
+
   await loadWordList();
 
   choiceBubbleEls.forEach((bubbleEl, index) => {

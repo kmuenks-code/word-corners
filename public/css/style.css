@@ -695,6 +695,54 @@ body {
   opacity: 0.8;
 }
 
+/* "Your Best" / "All-Time Best", filled from the database at game over.
+   Each row hides itself when there's no score to show (see renderBestScore
+   in js/ui.js), and the whole block collapses when neither has one — without
+   that last rule the empty <dl> would still contribute one of #game-over's
+   14px gaps and leave a hole above the button. */
+#best-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+  padding: 12px 0 2px;
+  border-top: 1px solid rgba(23, 78, 89, 0.16);
+}
+
+#best-scores:not(:has(.best-row:not([hidden]))) {
+  display: none;
+}
+
+.best-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* .best-row's unconditional `display: flex` above would otherwise beat the
+   UA stylesheet's [hidden] rule and keep hidden rows visible. Same trap as
+   .row-slot and #blank-picker. */
+.best-row[hidden] {
+  display: none;
+}
+
+.best-row dt {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.best-row dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
 #new-game-btn {
   padding: 11px 26px;
   border: none;

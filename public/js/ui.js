@@ -72,6 +72,16 @@ export function hideGameOver(bodyEl) {
   bodyEl.classList.remove('game-over');
 }
 
+// Fills one "Your Best" / "All-Time Best" row on the game-over overlay, or
+// hides it when there's no number to show — a null score (nothing recorded
+// yet, or the request failed) leaves the overlay showing just the final score
+// rather than a placeholder dash.
+export function renderBestScore(rowEl, valueEl, score) {
+  const hasScore = typeof score === 'number';
+  rowEl.hidden = !hasScore;
+  if (hasScore) valueEl.textContent = score;
+}
+
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 // Builds the 26 letter buttons in the blank-letter picker once. Callers

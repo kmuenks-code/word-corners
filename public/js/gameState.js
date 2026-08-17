@@ -24,7 +24,40 @@ export function createGameState() {
     holdLetter: null,
     score: 0,
     gameOver: false,
+    // Per-game telemetry, posted to the database once at game over (see
+    // js/api.js and main.js). Counts only successful submissions — invalid
+    // or too-short attempts aren't recorded.
+    stats: {
+      startedAt: Date.now(),
+      wordsTotal: 0,
+      // wordsByLength partitions wordsTotal; '6+' buckets everything longer.
+      words3: 0,
+      words4: 0,
+      words5: 0,
+      words6Plus: 0,
+      blanksEarned: 0,
+    },
   };
+}
+
+// Restarts the duration clock. Called once the first letters are actually
+// dealt, so the word list's load time doesn't count as play time.
+export function markGameStarted(state) {
+  state.stats.startedAt = Date.now();
+}
+
+// Records one successfully scored word of the given length.
+export function recordWordSubmitted(state, wordLength) {
+  const s = state.stats;
+  s.wordsTotal += 1;
+  if (wordLength === 3) s.words3 += 1;
+  else if (wordLength === 4) s.words4 += 1;
+  else if (wordLength === 5) s.words5 += 1;
+  else if (wordLength >= 6) s.words6Plus += 1;
+}
+
+export function recordBlankEarned(state) {
+  state.stats.blanksEarned += 1;
 }
 
 export function setChoiceLetter(state, index, letter) {
