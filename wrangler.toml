@@ -1,22 +1,21 @@
-# Cloudflare Pages configuration.
+# Cloudflare Worker configuration.
 #
-# `public/` is everything served to the browser. Anything outside it — this
-# file, db/, CLAUDE.md, .claude/ — is deliberately not part of the deploy.
-# `functions/` is picked up automatically from the project root and becomes
-# the /api routes; it is not part of pages_build_output_dir.
+# One Worker serves both the game and the API: `public/` is uploaded as
+# static assets, and src/index.js handles the /api routes. Assets are
+# matched before the Worker runs, so the Worker only sees /api/* and 404s.
+#
+# Anything outside `public/` — this file, db/, src/, CLAUDE.md, .claude/ —
+# is never served to the browser.
 
 name = "word-corners"
+main = "src/index.js"
 compatibility_date = "2026-08-16"
-pages_build_output_dir = "public"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
 
 # D1 (Cloudflare's SQLite). Schema lives in db/schema.sql.
-# Top-level bindings are inherited by both the preview and production
-# environments, so branch deploys and production share one database — fine
-# for a prototype where all the data is wanted in one place. To split them,
-# move this block under [env.production] and add an [env.preview] copy
-# pointing at a second database.
-#
-# database_id comes from `npx wrangler d1 create word-corners` — paste it below.
 [[d1_databases]]
 binding = "DB"
 database_name = "word-corners"

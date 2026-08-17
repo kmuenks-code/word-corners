@@ -2,9 +2,9 @@
 // Read at startup so the game-over overlay has something to show even on a
 // first game, and refreshed from the POST /api/games response after that.
 
-import { readBests, json } from './_bests.js';
+import { readBests, json } from './shared.js';
 
-export async function onRequestGet({ request, env }) {
+export async function handleScoresGet(request, env) {
   const playerId = new URL(request.url).searchParams.get('playerId')?.slice(0, 64) ?? '';
   if (!playerId) return json({ error: 'playerId is required' }, 400);
 

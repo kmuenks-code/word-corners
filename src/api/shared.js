@@ -1,5 +1,4 @@
-// Shared helpers for the /api routes. The leading underscore keeps Pages
-// from routing this file as an endpoint of its own.
+// Shared helpers for the /api routes.
 
 export function json(data, status = 200) {
   return new Response(JSON.stringify(data), {

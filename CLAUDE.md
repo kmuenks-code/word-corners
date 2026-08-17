@@ -14,22 +14,28 @@ The game itself is vanilla HTML/CSS/JS, ES modules, no build step, no
 runtime dependencies — open `public/index.html` directly or serve
 `public/` statically and it works, offline included.
 
-Deployed on Cloudflare Pages, with a small API in `functions/` backed by
-a D1 (SQLite) database that records one row per completed game and serves
-the personal/all-time best scores. The API is strictly additive: nothing
-in `public/js/` except `api.js` knows it exists, and the game stays fully
-playable when it's unreachable. See "Backend" below.
+Deployed as a **Cloudflare Worker with static assets** — one Worker both
+serves `public/` and handles the `/api` routes — backed by a D1 (SQLite)
+database that records one row per completed game and serves the
+personal/all-time best scores. Live at
+https://word-corners.muenks-kevin.workers.dev. The API is strictly
+additive: nothing in `public/js/` except `api.js` knows it exists, and the
+game stays fully playable when it's unreachable. See "Backend" below.
+
+Not Cloudflare **Pages** — an earlier version of this setup was, and the
+mismatch cost an evening. See "Why a Worker, not Pages" below before
+changing anything about the deploy.
 
 ## Layout
 ```
-public/     everything served to the browser (the game, unchanged)
-functions/  Cloudflare Pages Functions → the /api routes
+public/     static assets served to the browser (the game, unchanged)
+src/        the Worker: index.js routes, api/ handles /api/*
 db/         D1 schema
-wrangler.toml, package.json   Cloudflare config + wrangler dev dependency
+wrangler.toml, package.json   Worker config + wrangler dev dependency
 ```
-Nothing outside `public/` is deployed to the browser — that's the reason
-for the split, so `CLAUDE.md`, `.claude/`, `db/`, and `wrangler.toml`
-aren't publicly served.
+Only `public/` is uploaded as browser-reachable assets — that's the reason
+for the split, so `CLAUDE.md`, `.claude/`, `db/`, and `src/` aren't
+publicly served.
 
 ## Files
 Paths below are relative to `public/` unless the entry says otherwise.
@@ -45,9 +51,10 @@ Paths below are relative to `public/` unless the entry says otherwise.
 - `js/input.js` — `initDrag(dragEl, targetEls, onDrop, hitEl = dragEl)`: Pointer Events drag-and-drop, reports which target via `onDrop(target.dataset.corner)`. `hitEl` is what listens for `pointerdown` (defaults to `dragEl` itself); passing the surrounding bubble (`.choice-bubble`) instead of the letter glyph makes the whole bubble grabbable, not just the text — `dragEl` is still what visually moves. A `hitEl` with the `.empty` class (idle guard, relevant only to the legacy hold slot) or the `.blocked` class (a choice bubble frozen out while a blank is pending, see `js/main.js`) never starts a drag. Skips targets with the `.closed` or `.occupied` class as drop points. No game/DOM-render knowledge beyond drag visuals and those CSS classes. `main.js` calls it once per choice bubble (two times total), once more for `#blank-bubble` (the preview bubble is never draggable, blank or otherwise), each with targets = the four corners and its own `hitEl`/`dragEl` pair, wrapping `onDrop` in a closure that passes that bubble's index (or, for the blank, nothing — see below) through to the relevant handler.
 - `js/ui.js` — pure render functions (`renderCorner`, `renderLetter`, `renderScore`, `flashInvalid`, `renderClosedCorner`, `resetCornerVisuals`, `renderGameOver`, `hideGameOver`, `renderHold`, `renderUndoAvailability`, `renderBlankPickerOptions`, `showBlankPicker`, `hideBlankPicker`, `renderBlankBubble`, `setChoicesBlocked`). No game logic. `renderCorner(cornerEl, word, blankIndices = [])` rebuilds the corner's `.word` span's children rather than setting `textContent`: characters at positions listed in `blankIndices` (see `js/gameState.js`) are wrapped in a `.blank-letter` span (styled gold via `--accent`, `css/style.css`), everything else is a plain text node — every call site passes the corner's `state.blankIndices[corner]` (`main.js`) so this stays in sync with which letters were placed via the blank. `renderLetter` is generic — used for both choice-letter elements, the preview-letter element, and (in the idle code) the legacy current/next-letter elements. `renderHold(holdSlotEl, holdLetterEl, letter)` sets the letter text and toggles `.occupied`/`.empty` on the slot — only called from idle code now. `renderClosedCorner`/`resetCornerVisuals` only toggle the `.closed`/`.invalid` classes on the corner div itself — there's no separate submit button to enable/disable. `renderUndoAvailability(undoBtn, available)` toggles `undoBtn.disabled`. `showWordFeedback(cornerEl, wordLength, points, blankAwarded = false)` takes an optional fourth argument; when true it adds a third `.word-feedback-blank` ("Blank Tile Earned") span alongside the length/points ones — `main.js` passes `word.length >= BLANK_AWARD_LENGTH && !hadBlank` for it, so the message and the actual blank award (`awardBlankIfEligible`, called separately right after) always agree on both the length threshold and the "word already contains a blank" exclusion (see "Blank letter" below). `renderBlankPickerOptions(gridEl)` builds the 26 `.blank-picker-btn` letter buttons into `#blank-picker-grid` once at startup (`main.js` then attaches a single delegated click listener, rather than one per letter). `showBlankPicker`/`hideBlankPicker` toggle the `hidden` attribute on `#blank-picker`. `renderBlankBubble(slotEl, pending)` toggles `hidden` on `#blank-slot`. `setChoicesBlocked(bubbleEls, blocked)` toggles the `.blocked` class on the two `.choice-bubble` elements. `renderBestScore(rowEl, valueEl, score)` fills one game-over best-score row, or hides the row entirely when `score` isn't a number — so a missing best (nothing recorded yet, or the request failed) shows nothing rather than a placeholder dash.
 - `js/main.js` — wires modules together, owns the turn loop and corner-tap handlers, awaits `loadWordList()` before enabling drag. `drawNextLetter()` draws one fresh letter into `state.nextLetter` (the preview) and re-renders `#preview-letter`, passing `getRandomLetter` both current choice slots' letters (`state.choices.filter(Boolean)`) so the vowel/consonant no-3-of-a-kind rule in `letterSource.js` can see them. `advanceChoice(index)` is the refill step: it moves the current `state.nextLetter` into `state.choices[index]`, re-renders that bubble, then calls `drawNextLetter()` to draw a new preview — this "queue advances" behavior (both choice slots pulling from one shared upcoming-letter preview) is the core mechanic, replacing the old three-choice system's independent per-slot redraw. `initRound()` draws both choice slots fresh (unconstrained for slot 0, constrained against slot 0 for slot 1 — so the two choices are free to share a category) and then calls `drawNextLetter()` once, so the preview is the one draw constrained against both choices. `handleDrop(index, targetName)` (guarded by `state.blankPending` — a normal choice can't be dropped while a blank is pending, on top of the `.blocked` class already stopping the drag from starting) appends `state.choices[index]` to the target corner, closes the corner immediately if the resulting letters have no valid completion (rechecked after every append, not just once 5+ letters), then calls `advanceChoice(index)`, and records `lastMove = { type: 'choice', ... }` for undo. Each `.corner` has a `click` listener calling `handleSubmit(cornerEl.dataset.corner)` directly — the corner box itself is the submit button; `handleSubmit` is also a no-op while `state.blankPending` is true, since word submission is disabled until the blank is placed. `handleSubmit` only scores when `word.length >= MIN_WORD_LENGTH` (`3`) *and* `isValidWord(word)` — a dictionary-valid word shorter than that is treated the same as an invalid one (shake, corner left as-is), so the player can keep building past it rather than being stuck. On a valid submit, `handleSubmit` first reads `state.blankIndices[cornerName].length > 0` into `hadBlank` (before `clearCorner` resets it) and calls `awardBlankIfEligible(word, hadBlank)`, which sets `blankPending` only when `!hadBlank && word.length >= BLANK_AWARD_LENGTH` (`5`, the one tuning knob for the length side of this feature) and re-renders the blank bubble/blocked choices via `renderBlankState()` — see "Blank letter" below for why a word containing a blank-derived letter is excluded. `handleBlankDrop(targetName)` (the `onDrop` for `#blank-bubble`'s `initDrag`) just records `targetName` in the module-level `pendingBlankCorner` and opens `#blank-picker` — it doesn't touch game state yet, since the letter isn't chosen. `handleBlankLetterChosen(letter)` (wired to a single delegated click listener on `#blank-picker-grid`) is what actually appends `letter` to `pendingBlankCorner`'s word via `appendBlankLetterToCorner` (not `appendLetterToCorner` — this is what marks the position gold and blank-award-ineligible), runs the same immediate dead-end closing check as `handleDrop`, clears `blankPending`, hides the picker, and records `lastMove = { type: 'blank', corner, closedNow }` — there's no `letter` needed in that record since undoing a blank placement never restores a specific letter into a slot, it just re-arms `blankPending` (see "Undo" below). `endGame()` is the single game-over path (called from both `handleDrop` and `handleBlankLetterChosen`, replacing the direct `renderGameOver` calls those used to make): it shows the overlay immediately using the module-level `cachedBests` — seeded by a `fetchHighScores()` at startup that is deliberately *not* awaited, since the bests are only needed on the game-over screen and shouldn't delay the first turn — then posts the game via `submitGame` and re-renders with the bests the server returns, so a new personal or all-time high appears on the same screen that set it. A `gameRecorded` flag makes the post idempotent, and a failed post is silent (the overlay just keeps showing the previous bests, or none). `resetGame` (wired to `#new-game-btn`) rebuilds `state` and re-renders everything, including a fresh `initRound()`, for a new game — also hides the blank picker/bubble and clears `pendingBlankCorner`. A module-level `lastMove` variable holds a single-level undo record, tagged by `type` (`'choice'`: `{index, corner, closedNow, prevChoiceLetter, prevNextLetter}`, or `'blank'`: `{corner, closedNow}`) written by `handleDrop`/`handleBlankLetterChosen` and consumed by `handleUndo` (wired to `#undo-btn`), which branches on `lastMove.type`. See "Undo" below for the full behavior. Below `start()`, a block of `legacy*`-prefixed functions (`legacyNextTurn`, `legacyHandleHoldDrop`, `legacyHandleDropToHold`) reproduces the previous single-letter + hold turn loop; they are never called and depend on the hidden `#legacy-controls` elements — kept only in case that flow (or a hold mechanic layered onto the two-choice-plus-preview board) is revisited. That legacy code reads/writes `state.nextLetter` directly, the same field the active preview logic uses — harmless only because it's never called; if the legacy flow is ever revisited it would need its own field or explicit handoff logic.
-- `functions/api/games.js`, `functions/api/scores.js`, `functions/api/_bests.js` (project root, **not** under `public/`) — the Cloudflare Pages Functions behind `POST /api/games` and `GET /api/scores`. `_bests.js` (underscore prefix so Pages doesn't route it as an endpoint) holds the shared `json()` helper and `readBests(env, playerId)`, which runs the two `MAX(score)` queries as one `env.DB.batch(...)` and returns `{ globalBest, personalBest }` — the identical shape both routes return, so the client has one response format to handle. `games.js` validates every numeric field as a non-negative integer under a generous cap and rejects payloads whose per-length word counts don't sum to `wordsTotal`; those checks exist to keep a typo or stray script out of the dataset, not to stop a determined cheater (nothing client-side can), so widen the caps rather than working around them if real play ever exceeds them.
+- `src/index.js` (project root, **not** under `public/`) — the Worker entry point. Its `fetch` handler routes `POST /api/games` and `GET /api/scores` to `src/api/`, and hands anything else to `env.ASSETS.fetch(request)`. Worth understanding: static assets are matched *before* the Worker runs (that's the default with `[assets]` in `wrangler.toml`, absent `run_worker_first`), so this handler only ever sees `/api/*` plus paths that match no file — which is why the non-API branch just delegates back to the assets binding for its 404 rather than inventing one.
+- `src/api/games.js`, `src/api/scores.js`, `src/api/shared.js` — the two route handlers plus their shared helpers. `shared.js` holds `json()` and `readBests(env, playerId)`, which runs the two `MAX(score)` queries as one `env.DB.batch(...)` and returns `{ globalBest, personalBest }` — the identical shape both routes return, so the client has one response format to handle. `games.js` validates every numeric field as a non-negative integer under a generous cap and rejects payloads whose per-length word counts don't sum to `wordsTotal`; those checks exist to keep a typo or stray script out of the dataset, not to stop a determined cheater (nothing client-side can), so widen the caps rather than working around them if real play ever exceeds them.
 - `db/schema.sql` (project root) — the single `games` table plus its two indexes, one row per completed game. Apply it with `npm run db:init` (local) / `npm run db:init:remote` (production).
-- `wrangler.toml`, `package.json` (project root) — `pages_build_output_dir = "public"` is what keeps everything else out of the deploy. The `[[d1_databases]]` block is top-level, so preview (branch) deploys and production share one database — deliberate for a prototype where all the data is wanted in one place; split it into `[env.preview]`/`[env.production]` blocks pointing at two databases if that stops being true. `package.json` exists only for `wrangler`; the game still has no runtime dependencies and no build step.
+- `wrangler.toml`, `package.json` (project root) — `main = "src/index.js"` plus `[assets] directory = "./public"` is the Worker-with-static-assets setup; `directory` is what keeps everything else out of the deploy, and `binding = "ASSETS"` is what makes `env.ASSETS` available to `src/index.js`. `[[d1_databases]]` binds `env.DB`. `package.json` exists only for `wrangler`; the game still has no runtime dependencies and no build step.
 - `data/wordlist.txt` — ENABLE1 word list, uppercase, one word/line, public domain. See `data/WORDLIST_LICENSE.txt` for provenance (chosen over NASPA's NWL2023 because that source has no license — see "Word list decision" below).
 
 ## Architecture rule
@@ -207,9 +214,9 @@ pill is likewise gated on `!hadBlank`, so the on-screen feedback always
 agrees with whether a blank was actually awarded.
 
 ## Backend
-Cloudflare Pages serves `public/`; `functions/` becomes the API on the
-same origin (so no CORS anywhere). D1 is Cloudflare's SQLite, bound as
-`env.DB` via `wrangler.toml`.
+One Cloudflare Worker serves both `public/` (as static assets) and the
+API, on the same origin — so no CORS anywhere. D1 is Cloudflare's SQLite,
+bound as `env.DB` via `wrangler.toml`.
 
 Two routes, both returning `{ globalBest, personalBest }` (either may be
 `null` when nothing is recorded yet):
@@ -228,10 +235,14 @@ error, `endGame` renders the overlay before the network call resolves,
 and no game rule reads anything from the server — so the game behaves
 identically offline, minus the two best-score lines.
 
-Local development: `npm run dev` (`wrangler pages dev`) serves the site
-and the Functions together against a **local** D1 file under
+Local development: `npm run dev` (`wrangler dev`, port 8787) serves the
+assets and the Worker together against a **local** D1 file under
 `.wrangler/`, so nothing you do while developing touches production
-data. `npm run db:init` creates the tables in that local database.
+data. `npm run db:init` creates the tables in that local database — note
+that local D1 files are keyed by `database_id`, so changing that value in
+`wrangler.toml` silently orphans the old local database and you have to
+re-run `db:init` (the symptom is `no such table: games` from a dev server
+that worked five minutes ago).
 `npm run db:games` dumps the most recent production rows for a quick
 look; for real analysis, query D1 from the Cloudflare dashboard.
 
@@ -239,6 +250,28 @@ Player identity is an anonymous UUID in `localStorage` — enough to make
 "your best" meaningful, but it is per-browser, not per-person. The
 `player_name` column exists and is unused, reserved for the initials
 entry described below.
+
+## Why a Worker, not Pages
+This started as a Cloudflare **Pages** project (`functions/` directory,
+`pages_build_output_dir`, `wrangler pages deploy`) and was converted. If
+you find yourself reintroducing any of that, read this first.
+
+The dashboard's "Workers & Pages → Create" flow provisions a **Worker
+with Workers Builds**, not a Pages project, and its default deploy command
+is `npx wrangler deploy`. Pointing a Pages-shaped repo at it produces a
+chain of errors that each look like an unrelated auth/config problem:
+`Missing entry-point to Worker script` (because `wrangler deploy` wants
+`main`, which a Pages config doesn't have), then `Authentication error
+[code: 10000]` once the deploy command is overridden to `wrangler pages
+deploy` (because that tries to create a *separate* Pages project from
+inside a Worker's pipeline), then build-token errors. The tell that
+settles it: `wrangler pages project list` returns empty while
+`wrangler deployments list` finds the Worker.
+
+The current setup matches what that dashboard flow actually creates, so
+the default deploy command is correct and no override is needed. Deploy
+with `npm run deploy` (`wrangler deploy`) — from a machine authenticated
+via `wrangler login`, or from CI.
 
 ## Not yet built (ask before assuming scope)
 - Initials/nickname entry on the game-over screen, and a real top-10

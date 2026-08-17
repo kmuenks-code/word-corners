@@ -1,9 +1,8 @@
 // POST /api/games — record one completed game, return the refreshed bests.
-//
-// Cloudflare Pages Function. `env.DB` is the D1 binding declared in
-// wrangler.toml; the table it writes to is defined in db/schema.sql.
+// `env.DB` is the D1 binding from wrangler.toml; the table it writes to is
+// defined in db/schema.sql.
 
-import { readBests, json } from './_bests.js';
+import { readBests, json } from './shared.js';
 
 // Plausibility bounds. This is a friends-and-family prototype, not a public
 // leaderboard — these exist to keep a typo or a stray script from writing
@@ -19,7 +18,7 @@ function intField(value, max) {
   return value;
 }
 
-export async function onRequestPost({ request, env }) {
+export async function handleGamesPost(request, env) {
   let body;
   try {
     body = await request.json();

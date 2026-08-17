@@ -2,13 +2,13 @@
   "name": "word-corners",
   "private": true,
   "version": "0.6.0",
-  "description": "Mobile-friendly word game. The game itself has no build step and no runtime dependencies — wrangler is here only to run and deploy the Cloudflare Pages + D1 backend.",
+  "description": "Mobile-friendly word game. The game itself has no build step and no runtime dependencies — wrangler is here only to run and deploy the Cloudflare Worker + D1 backend.",
   "scripts": {
-    "dev": "wrangler pages dev",
+    "dev": "wrangler dev",
     "db:init": "wrangler d1 execute word-corners --local --file=db/schema.sql",
     "db:init:remote": "wrangler d1 execute word-corners --remote --file=db/schema.sql",
     "db:games": "wrangler d1 execute word-corners --remote --command=\"SELECT * FROM games ORDER BY created_at DESC LIMIT 20\"",
-    "deploy": "wrangler pages deploy"
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.42.0"
