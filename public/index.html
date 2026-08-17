@@ -9,7 +9,7 @@
 <body>
 <div id="board">
   <header id="top-bar">
-    <h1 id="game-title">Word Corners</h1>
+    <img id="game-logo" src="img/logo.png" alt="Word Corners">
     <div id="score-badge">
       <span id="score-label">Score</span>
       <span id="score-value">0</span>
@@ -86,15 +86,15 @@
     </div>
   </div>
 
-  <div id="hint-bar">
+  <button id="hint-bar" type="button">
     <span id="hint-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9.5 18.5h5M10.5 21.5h3M12 2.5a7 7 0 0 0-4 12.8v2.2h8v-2.2a7 7 0 0 0-4-12.8z"/>
       </svg>
     </span>
-    <span id="hint-text">Drag a letter into a corner.<br>Tap a corner to score its 3+ letter word!</span>
-  </div>
+    <span id="hint-text">How to Play</span>
+  </button>
 
   <div id="game-over">
     <div id="game-over-label">Game Over</div>
