@@ -54,6 +54,13 @@ let lastMove = null;
 // Set while the blank-letter picker is open, to the corner it was
 // dropped on; consumed (and cleared) when a letter is chosen.
 let pendingBlankCorner = null;
+// Set by handleUndo when a 'choice' move is undone, to the preview letter
+// that move's advanceChoice() had just freshly drawn (and is being
+// discarded). drawNextLetter() consumes this on its next call instead of
+// drawing a new random letter, so an undo can't be used to re-roll the
+// preview for free by dropping and undoing repeatedly — the same letter
+// that would have come up keeps coming up until it's actually drawn.
+let bankedPreviewLetter = null;
 // Last known { globalBest, personalBest } from the server. Seeded at
 // startup and refreshed from the response to each game we post, so the
 // game-over overlay can render immediately instead of waiting on a request.
@@ -93,6 +100,13 @@ function cornerElFor(cornerName) {
 // choice slots currently hold. The two choice slots themselves are free to
 // match each other's category; only the preview is constrained against them.
 function drawNextLetter() {
+  if (bankedPreviewLetter !== null) {
+    const letter = bankedPreviewLetter;
+    bankedPreviewLetter = null;
+    setNextLetter(state, letter);
+    renderLetter(previewLetterEl, letter);
+    return;
+  }
   const otherLetters = state.choices.filter(Boolean);
   const letter = getRandomLetter(otherLetters);
   setNextLetter(state, letter);
@@ -257,6 +271,7 @@ function handleUndo() {
   }
   setChoiceLetter(state, index, prevChoiceLetter);
   renderLetter(choiceLetterEls[index], prevChoiceLetter);
+  bankedPreviewLetter = state.nextLetter;
   setNextLetter(state, prevNextLetter);
   renderLetter(previewLetterEl, prevNextLetter);
 
@@ -293,6 +308,7 @@ function resetGame() {
   state = createGameState();
   lastMove = null;
   pendingBlankCorner = null;
+  bankedPreviewLetter = null;
   gameRecorded = false;
   renderUndoAvailability(undoBtn, false);
   hideGameOver(document.body);

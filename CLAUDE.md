@@ -153,6 +153,24 @@ submission is re-disabled the instant the undo completes, the same as
 right after the blank was originally awarded — the player is forced
 straight back into placing it.
 
+Undoing a `'choice'` move restores the preview letter to what it was
+before that move's `advanceChoice()` ran (`prevNextLetter`, already
+stored on `lastMove`) — but the letter that `advanceChoice()` had freshly
+drawn into the preview isn't simply discarded. `handleUndo` banks it into
+a module-level `bankedPreviewLetter` in `js/main.js`, and `drawNextLetter()`
+checks that bank first, consuming and clearing it, before falling back to
+a random draw. Without this, drop-then-undo is a free no-op that reveals
+what the next preview letter *would* be with no cost, since undo already
+puts every other piece of state back exactly where it was — a player
+could repeat that cycle to "shop" for a preview letter they like. Banking
+the discarded letter closes that: the same letter that showed up before
+the undo comes up again the next time any choice slot advances, so
+undoing never yields new information for free, only a second-guess. The
+bank is a single slot (matching the rest of undo being single-level) and
+is cleared by `resetGame`; it's untouched by the blank-letter undo path,
+since that path never calls `drawNextLetter()`/touches the preview at
+all.
+
 ## Blank letter
 Submitting a valid word of `BLANK_AWARD_LENGTH` (5) or more letters
 awards a wildcard "blank" letter, regardless of whether that submission
