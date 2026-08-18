@@ -47,12 +47,6 @@ export function flashInvalid(cornerEl) {
   cornerEl.classList.add('invalid');
 }
 
-export function renderHold(holdSlotEl, holdLetterEl, letter) {
-  holdLetterEl.textContent = letter || '';
-  holdSlotEl.classList.toggle('occupied', !!letter);
-  holdSlotEl.classList.toggle('empty', !letter);
-}
-
 export function showWordFeedback(cornerEl, wordLength, points, blankAwarded = false) {
   const existing = cornerEl.querySelector('.word-feedback');
   if (existing) existing.remove();

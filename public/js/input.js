@@ -6,9 +6,8 @@
 // separate from dragEl (the letter itself, which is what visually
 // moves) so the whole bubble around a letter is grabbable, not just
 // the glyph. Defaults to dragEl when not given. A hitEl with the
-// `.empty` class (the hold slot with nothing in it) or the `.blocked`
-// class (a choice bubble frozen out while a blank letter is pending —
-// see main.js) never starts a drag.
+// `.blocked` class (a choice bubble frozen out while a blank letter is
+// pending — see main.js) never starts a drag.
 //
 // Only one drag can be live at a time, across every initDrag() call:
 // `activeDrag` is module-level, and each drag remembers the pointerId it
@@ -36,7 +35,7 @@ export function initDrag(dragEl, corners, onDrop, hitEl = dragEl) {
   }
 
   hitEl.addEventListener('pointerdown', (e) => {
-    if (hitEl.classList.contains('empty') || hitEl.classList.contains('blocked')) return;
+    if (hitEl.classList.contains('blocked')) return;
     if (activeDrag) return;
     pointerId = e.pointerId;
     activeDrag = dragEl;
@@ -83,7 +82,7 @@ export function initDrag(dragEl, corners, onDrop, hitEl = dragEl) {
 
 function cornerUnderPoint(corners, x, y) {
   return corners.find((c) => {
-    if (c.classList.contains('closed') || c.classList.contains('occupied')) return false;
+    if (c.classList.contains('closed')) return false;
     const r = c.getBoundingClientRect();
     return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
   });

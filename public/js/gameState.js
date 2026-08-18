@@ -18,10 +18,6 @@ export function createGameState() {
     // normal choice bubbles are blocked and word submission is disabled —
     // the blank must be used before anything else. See main.js.
     blankPending: false,
-    // Idle: unused by the active turn loop, kept in case the single-letter
-    // + hold flow is revisited. See main.js.
-    currentLetter: null,
-    holdLetter: null,
     score: 0,
     gameOver: false,
     // Per-game telemetry, posted to the database once at game over (see
@@ -94,10 +90,6 @@ export function reopenCorner(state, corner) {
   state.gameOver = false;
 }
 
-export function setCurrentLetter(state, letter) {
-  state.currentLetter = letter;
-}
-
 export function setNextLetter(state, letter) {
   state.nextLetter = letter;
 }
@@ -108,14 +100,6 @@ export function setBlankPending(state, pending) {
 
 export function addScore(state, points) {
   state.score += points;
-}
-
-export function setHoldLetter(state, letter) {
-  state.holdLetter = letter;
-}
-
-export function clearHoldLetter(state) {
-  state.holdLetter = null;
 }
 
 // Ends the game outright, regardless of how many corners are still open.

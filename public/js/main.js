@@ -8,8 +8,6 @@ import {
   setChoiceLetter,
   setNextLetter,
   setBlankPending,
-  setHoldLetter,
-  clearHoldLetter,
   removeLastLetter,
   reopenCorner,
   markGameStarted,
@@ -41,7 +39,6 @@ import {
   resetCornerVisuals,
   renderGameOver,
   hideGameOver,
-  renderHold,
   showWordFeedback,
   renderUndoAvailability,
   renderBlankPickerOptions,
@@ -616,55 +613,3 @@ async function start() {
 }
 
 start();
-
-// ---------------------------------------------------------------------
-// Idle: the previous single-letter + hold turn loop this replaced. Not
-// called from start() or anywhere else — kept in case that flow (or the
-// hold mechanic layered onto the two-choice-plus-preview board) is
-// revisited. Depends on the hidden #legacy-controls markup in index.html
-// and the currentLetter/holdLetter fields still tracked in gameState.js
-// (state.nextLetter is shared with the active preview logic above, so this
-// legacy code and the active game would stomp on each other's use of it if
-// both ran — harmless only because this code is never called).
-// ---------------------------------------------------------------------
-
-function legacyNextTurn(currentLetterEl, nextLetterEl) {
-  state.currentLetter = state.nextLetter ?? getRandomLetter();
-  state.nextLetter = getRandomLetter();
-  renderLetter(currentLetterEl, state.currentLetter);
-  renderLetter(nextLetterEl, state.nextLetter);
-}
-
-function legacyHandleHoldDrop(cornerName, holdSlotEl, holdLetterEl) {
-  if (state.closedCorners[cornerName] || state.gameOver || !state.holdLetter) return;
-
-  const heldLetter = state.holdLetter;
-  appendLetterToCorner(state, cornerName, heldLetter);
-  const word = state.corners[cornerName];
-  const cornerEl = cornerElFor(cornerName);
-  renderCorner(cornerEl, word);
-
-  clearHoldLetter(state);
-  renderHold(holdSlotEl, holdLetterEl, state.holdLetter);
-
-  let closedNow = false;
-  if (word.length >= 5 && !hasWordWithPrefix(word)) {
-    closeCorner(state, cornerName);
-    renderClosedCorner(cornerEl);
-    closedNow = true;
-  }
-
-  lastMove = { type: 'fromHold', corner: cornerName, letter: heldLetter, closedNow };
-  renderUndoAvailability(undoBtn, true);
-
-  if (state.gameOver) {
-    renderGameOver(document.body, finalScoreEl, state.score);
-  }
-}
-
-function legacyHandleDropToHold(holdSlotEl, holdLetterEl, currentLetterEl, nextLetterEl) {
-  if (state.gameOver || state.holdLetter) return;
-  setHoldLetter(state, state.currentLetter);
-  renderHold(holdSlotEl, holdLetterEl, state.holdLetter);
-  legacyNextTurn(currentLetterEl, nextLetterEl);
-}
