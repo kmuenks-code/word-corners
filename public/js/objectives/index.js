@@ -10,14 +10,16 @@ export {
   NO_OBJECTIVES,
   GAME_MODES,
   OBJECTIVE_POOL,
-  OBJECTIVES_PER_DIFFICULTY,
+  POINT_BUDGETS,
   defineMode,
   challenge,
   createMode,
   getGameMode,
   listGameModes,
-  objectiveCountFor,
-  drawObjectives,
+  dealSizeRangeFor,
+  budgetFor,
+  selectWithinBudget,
+  feasibleDealSizes,
 } from './modes.js';
 export { ObjectiveStatus } from './tracker.js';
 export {

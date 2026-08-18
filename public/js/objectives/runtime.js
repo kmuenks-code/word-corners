@@ -69,7 +69,7 @@ export function createObjectiveRuntime(initialMode = NO_OBJECTIVES, { now = Date
   }
 
   function load() {
-    objectives = instantiateObjectives(mode.selectObjectives(), mode.difficulty);
+    objectives = instantiateObjectives(mode.selectObjectives());
     counters = freshCounters();
     log = [];
     base = 0;

@@ -24,7 +24,7 @@ import {
   createMode,
   listGameModes,
   listDifficulties,
-  objectiveCountFor,
+  dealSizeRangeFor,
 } from './objectives/index.js';
 import { submitGame, fetchHighScores } from './api.js';
 import { isProduction } from './env.js';
@@ -219,16 +219,23 @@ function showModeStep() {
   renderSplashStep(splashModesEl, splashDifficultyEl, 'modes');
 }
 
-// The tier buttons are rebuilt per mode, since how many objectives a tier
-// deals is a property of the mode's pool — Endless would say "0" for all
-// four, which is exactly why it never reaches this step.
+// The tier buttons are rebuilt per mode, since what a tier deals is a
+// property of the mode's pool — Endless would say "0" for all four, which
+// is exactly why it never reaches this step.
+//
+// A tier no longer fixes how many objectives you get, only their combined
+// cost, so this shows the range of deal sizes that cost can be spent on.
+// Deliberately not the budget itself: the game already means "score" by
+// "points", and a tier labelled "8 points" next to a score badge would read
+// as a target rather than a difficulty.
 function showDifficultyStep(modeId) {
   pendingModeId = modeId;
   renderDifficultyOptions(
     splashDifficultyOptionsEl,
     listDifficulties().map((tier) => {
-      const count = objectiveCountFor(modeId, tier.id);
-      return { ...tier, note: `${count} objective${count === 1 ? '' : 's'}` };
+      const { min, max } = dealSizeRangeFor(modeId, tier.id);
+      const range = min === max ? `${min}` : `${min}–${max}`;
+      return { ...tier, note: `${range} goal${max === 1 ? '' : 's'}` };
     })
   );
   renderSplashStep(splashModesEl, splashDifficultyEl, 'difficulty');

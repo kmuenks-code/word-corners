@@ -99,9 +99,9 @@ Paths below are relative to `public/` unless the entry says otherwise.
 - `js/wordValidator.js` — `loadWordList()` (async, fetches `data/wordlist.txt` into a `Set`) + `isValidWord(word)` (sync, throws if called before load) + `hasWordWithPrefix(prefix)` (sync, true if any dictionary word starts with `prefix`; used to detect dead corners). Real dictionary, not a stub.
 - `js/scoring.js` — `scoreWord(word)`: `n*(n-1)/2`, superlinear by design. Single function, edit here only to change the formula.
 - `js/input.js` — `initDrag(dragEl, targetEls, onDrop, hitEl = dragEl)`: Pointer Events drag-and-drop, reports which target via `onDrop(target.dataset.corner)`. `hitEl` is what listens for `pointerdown` (defaults to `dragEl` itself); passing the surrounding bubble (`.choice-bubble`) instead of the letter glyph makes the whole bubble grabbable, not just the text — `dragEl` is still what visually moves. A `hitEl` with the `.empty` class (idle guard, relevant only to the legacy hold slot) or the `.blocked` class (a choice bubble frozen out while a blank is pending, see `js/main.js`) never starts a drag. Skips targets with the `.closed` or `.occupied` class as drop points. No game/DOM-render knowledge beyond drag visuals and those CSS classes. `main.js` calls it once per choice bubble (two times total), once more for `#blank-bubble` (the preview bubble is never draggable, blank or otherwise), each with targets = the four corners and its own `hitEl`/`dragEl` pair, wrapping `onDrop` in a closure that passes that bubble's index (or, for the blank, nothing — see below) through to the relevant handler.
-- `js/ui.js` — pure render functions (`renderCorner`, `renderLetter`, `renderScore`, `flashInvalid`, `renderClosedCorner`, `resetCornerVisuals`, `renderGameOver`, `hideGameOver`, `renderHold`, `renderUndoAvailability`, `renderBlankPickerOptions`, `showBlankPicker`, `hideBlankPicker`, `renderBlankBubble`, `setChoicesBlocked`, `renderEnvBadge`). No game logic. **Splash/objective additions:** `renderModeOptions(containerEl, modes)` and `renderDifficultyOptions(containerEl, difficulties)` build the two splash button groups from plain data (each difficulty's `note` — "3 objectives" — is passed *in* by `main.js`, which asks `objectiveCountFor`, so `ui.js` still knows nothing about what a mode is); `showSplash`/`hideSplash`/`renderSplashStep(modesEl, difficultyEl, step)` drive the two-step flow; `renderObjectiveFlag(flagEl, badgeEl, {visible, done, total})` and `pulseObjectiveFlag(flagEl)` drive the edge flag; `renderObjectiveList(listEl, objectives)` renders a snapshot's objective array and is shared by the panel and the game-over summary (it clamps `current` for the meter while printing the raw number, and gives `enduring` objectives no meter at all, since their goal is a limit rather than a target); `showObjectivePanel`/`hideObjectivePanel`; `renderVerdict(labelEl, text)` writes the game-over headline; `renderGameOverObjectives(listEl, objectives)` fills the game-over summary and hides it entirely when there were no objectives. `renderCorner(cornerEl, word, blankIndices = [])` rebuilds the corner's `.word` span's children rather than setting `textContent`: characters at positions listed in `blankIndices` (see `js/gameState.js`) are wrapped in a `.blank-letter` span (styled gold via `--accent`, `css/style.css`), everything else is a plain text node — every call site passes the corner's `state.blankIndices[corner]` (`main.js`) so this stays in sync with which letters were placed via the blank. `renderLetter` is generic — used for both choice-letter elements, the preview-letter element, and (in the idle code) the legacy current/next-letter elements. `renderHold(holdSlotEl, holdLetterEl, letter)` sets the letter text and toggles `.occupied`/`.empty` on the slot — only called from idle code now. `renderClosedCorner`/`resetCornerVisuals` only toggle the `.closed`/`.invalid` classes on the corner div itself — there's no separate submit button to enable/disable. `renderUndoAvailability(undoBtn, available)` toggles `undoBtn.disabled`. `showWordFeedback(cornerEl, wordLength, points, blankAwarded = false)` takes an optional fourth argument; when true it adds a third `.word-feedback-blank` ("Blank Tile Earned") span alongside the length/points ones — `main.js` passes `word.length >= BLANK_AWARD_LENGTH && !hadBlank` for it, so the message and the actual blank award (`awardBlankIfEligible`, called separately right after) always agree on both the length threshold and the "word already contains a blank" exclusion (see "Blank letter" below). `renderBlankPickerOptions(gridEl)` builds the 26 `.blank-picker-btn` letter buttons into `#blank-picker-grid` once at startup (`main.js` then attaches a single delegated click listener, rather than one per letter). `showBlankPicker`/`hideBlankPicker` toggle the `hidden` attribute on `#blank-picker`. `renderBlankBubble(slotEl, pending)` toggles `hidden` on `#blank-slot`. `setChoicesBlocked(bubbleEls, blocked)` toggles the `.blocked` class on the two `.choice-bubble` elements. `renderEnvBadge(badgeEl, label)` writes the top-bar environment badge and hides it again when `label` is empty — which environment deserves which label (or none) is decided in `js/env.js`/`main.js`, not here. `renderBestScore(rowEl, valueEl, score)` fills one game-over best-score row, or hides the row entirely when `score` isn't a number — so a missing best (nothing recorded yet, or the request failed) shows nothing rather than a placeholder dash.
-- `js/main.js` — wires modules together, owns the turn loop and corner-tap handlers, awaits `loadWordList()` before enabling drag. `start()` opens by calling `renderEnvBadge(envBadgeEl, isProduction() ? null : 'Test')` — the single line that decides whether the TEST badge shows, before anything else happens, so a mid-load error can't leave a test build looking like production. `drawNextLetter()` draws one fresh letter into `state.nextLetter` (the preview) and re-renders `#preview-letter`, passing `getRandomLetter` both current choice slots' letters (`state.choices.filter(Boolean)`) so the vowel/consonant no-3-of-a-kind rule in `letterSource.js` can see them. `advanceChoice(index)` is the refill step: it moves the current `state.nextLetter` into `state.choices[index]`, re-renders that bubble, then calls `drawNextLetter()` to draw a new preview — this "queue advances" behavior (both choice slots pulling from one shared upcoming-letter preview) is the core mechanic, replacing the old three-choice system's independent per-slot redraw. `initRound()` draws both choice slots fresh (unconstrained for slot 0, constrained against slot 0 for slot 1 — so the two choices are free to share a category) and then calls `drawNextLetter()` once, so the preview is the one draw constrained against both choices. `handleDrop(index, targetName)` (guarded by `state.blankPending` — a normal choice can't be dropped while a blank is pending, on top of the `.blocked` class already stopping the drag from starting) appends `state.choices[index]` to the target corner, closes the corner immediately if the resulting letters have no valid completion (rechecked after every append, not just once 5+ letters), then calls `advanceChoice(index)`, and records `lastMove = { type: 'choice', ... }` for undo. Each `.corner` has a `click` listener calling `handleSubmit(cornerEl.dataset.corner)` directly — the corner box itself is the submit button; `handleSubmit` is also a no-op while `state.blankPending` is true, since word submission is disabled until the blank is placed. `handleSubmit` only scores when `word.length >= MIN_WORD_LENGTH` (`3`) *and* `isValidWord(word)` — a dictionary-valid word shorter than that is treated the same as an invalid one (shake, corner left as-is), so the player can keep building past it rather than being stuck. On a valid submit, `handleSubmit` first reads `state.blankIndices[cornerName].length > 0` into `hadBlank` (before `clearCorner` resets it) and calls `awardBlankIfEligible(word, hadBlank)`, which sets `blankPending` only when `!hadBlank && word.length >= BLANK_AWARD_LENGTH` (`5`, the one tuning knob for the length side of this feature) and re-renders the blank bubble/blocked choices via `renderBlankState()` — see "Blank letter" below for why a word containing a blank-derived letter is excluded. `handleBlankDrop(targetName)` (the `onDrop` for `#blank-bubble`'s `initDrag`) just records `targetName` in the module-level `pendingBlankCorner` and opens `#blank-picker` — it doesn't touch game state yet, since the letter isn't chosen. `handleBlankLetterChosen(letter)` (wired to a single delegated click listener on `#blank-picker-grid`) is what actually appends `letter` to `pendingBlankCorner`'s word via `appendBlankLetterToCorner` (not `appendLetterToCorner` — this is what marks the position gold and blank-award-ineligible), runs the same immediate dead-end closing check as `handleDrop`, clears `blankPending`, hides the picker, and records `lastMove = { type: 'blank', corner, closedNow }` — there's no `letter` needed in that record since undoing a blank placement never restores a specific letter into a slot, it just re-arms `blankPending` (see "Undo" below). `endGame()` is the single game-over path (called from both `handleDrop` and `handleBlankLetterChosen`, replacing the direct `renderGameOver` calls those used to make): it shows the overlay immediately using the module-level `cachedBests` — seeded by a `fetchHighScores()` at startup that is deliberately *not* awaited, since the bests are only needed on the game-over screen and shouldn't delay the first turn — then posts the game via `submitGame` and re-renders with the bests the server returns, so a new personal or all-time high appears on the same screen that set it. A `gameRecorded` flag makes the post idempotent, and a failed post is silent (the overlay just keeps showing the previous bests, or none). `endGame` also resolves the objective verdict: `objectives.finish()` returns the final snapshot, from which it writes the headline (`'You Win!'` only when the status is `won`; an endless game finishes `active` and keeps `'Game Over'`) and fills `#game-over-objectives`. **Splash flow:** `startGame(mode)` replaced `resetGame` as the single entry point for beginning play — it rebuilds `state`, calls `objectives.reset(mode)` (which re-runs the mode's `selectObjectives()`, so a pool-backed mode re-rolls per game), re-renders everything including a fresh `initRound()`, and hides the splash; `#new-game-btn` is wired to `returnToSplash` instead, so every game starts from the mode choice. `handleModeChosen(modeId)` either starts immediately (Endless) or calls `showDifficultyStep(modeId)`, which rebuilds the tier buttons with each tier's objective count from `objectiveCountFor`. The mode buttons are rendered only *after* `loadWordList()` resolves, replacing the markup's `.splash-loading` placeholder, so a first tap can't start a game whose word checks would throw. **Objective HUD:** `renderObjectiveState()` reads `objectives.snapshot()` and nothing else — no game state — and is subscribed via `objectives.onChange`, so it also re-renders on the rewind an undo performs. It bumps the flag (`pulseObjectiveFlag`) only when a `current`/`status` signature actually changes, since the runtime notifies on every event and most events move nothing an objective cares about; `lastObjectiveSignature` is cleared in `startGame` so a new game's first render can't be mistaken for progress. A module-level `lastMove` variable holds a single-level undo record, tagged by `type` (`'choice'`: `{index, corner, closedNow, prevChoiceLetter, prevNextLetter}`, or `'blank'`: `{corner, closedNow}`) written by `handleDrop`/`handleBlankLetterChosen` and consumed by `handleUndo` (wired to `#undo-btn`), which branches on `lastMove.type`. See "Undo" below for the full behavior. Below `start()`, a block of `legacy*`-prefixed functions (`legacyNextTurn`, `legacyHandleHoldDrop`, `legacyHandleDropToHold`) reproduces the previous single-letter + hold turn loop; they are never called and depend on the hidden `#legacy-controls` elements — kept only in case that flow (or a hold mechanic layered onto the two-choice-plus-preview board) is revisited. That legacy code reads/writes `state.nextLetter` directly, the same field the active preview logic uses — harmless only because it's never called; if the legacy flow is ever revisited it would need its own field or explicit handoff logic. **Objective wiring** (see "Objectives" below) is confined to: the module-level `objectives` runtime (created with `NO_OBJECTIVES` and swapped to the chosen mode by `startGame` — there is no build-time mode constant any more), an `objectives.emit(...)` call at each of the seven moments in `events.js`, `objectives.mark()` at the top of `handleDrop`/`handleBlankLetterChosen` (stored as `objectiveMark` on `lastMove`), `objectives.rewindTo(lastMove.objectiveMark)` at the top of `handleUndo` (before the type branch, since both branches reverse exactly one move), `objectives.commit()` where `handleSubmit` clears `lastMove`, `objectives.reset(mode)` in `startGame`, `objectives.onChange(renderObjectiveState)` in `start()`, and `objectives.emit(GAME_ENDED)` + `objectives.finish()` in `endGame`. `maybeEndGame()` replaces the old bare `if (state.gameOver) endGame()` at the end of `handleDrop`/`handleBlankLetterChosen` (and is now called from `handleSubmit` too, since completing an objective can end a game on a *submission* — something the corner-closure rule alone could never do). `awardBlankIfEligible` gained a leading `cornerName` parameter purely so the `BLANK_AWARDED` event can name the corner.
-- `js/objectives/*.js` — the objective system, seven modules; see "Objectives" below for the design. `events.js` (the event vocabulary `main.js` emits, with every payload shape documented, plus which events survive an undo), `difficulty.js` (the `Difficulty` tiers — easy/medium/hard/expert — their order, labels, and `assertDifficulty`; a tier is only a name here, its meaning lives in each objective's `byDifficulty` table), `definitions.js` (the catalog of objective *types*, their defaults and per-difficulty tuning — the balancing surface; four entries — `wordsOfLength`, `words`, `totalScore`, `wordsInCorner` — plus the `defineObjective` validator that rejects a `byDifficulty` table missing a tier, and `resolveParams`, which layers defaults → definition tier tuning → per-spec tier tuning → explicit params), `tracker.js` (specs → live instances, folding events into progress, resolving each objective's status), `modes.js` (which objectives are in play at which difficulty and what ends the game; `NO_OBJECTIVES`/`challenge`/`defineMode`/`createMode`, the `GAME_MODES` table with its `endless` and `objective` rows, and the Objective mode's draw — `OBJECTIVE_POOL`, `OBJECTIVES_PER_DIFFICULTY`, and `drawObjectives`, which picks distinct objective *types* then one variant of each), `runtime.js` (the single object `main.js` holds: event log, counters, verdict, undo-by-replay), `index.js` (the facade — `main.js` imports from here and nothing else in the directory).
+- `js/ui.js` — pure render functions (`renderCorner`, `renderLetter`, `renderScore`, `flashInvalid`, `renderClosedCorner`, `resetCornerVisuals`, `renderGameOver`, `hideGameOver`, `renderHold`, `renderUndoAvailability`, `renderBlankPickerOptions`, `showBlankPicker`, `hideBlankPicker`, `renderBlankBubble`, `setChoicesBlocked`, `renderEnvBadge`). No game logic. **Splash/objective additions:** `renderModeOptions(containerEl, modes)` and `renderDifficultyOptions(containerEl, difficulties)` build the two splash button groups from plain data (each difficulty's `note` — "2–4 goals" — is passed *in* by `main.js`, which asks `dealSizeRangeFor`, so `ui.js` still knows nothing about what a mode is); `showSplash`/`hideSplash`/`renderSplashStep(modesEl, difficultyEl, step)` drive the two-step flow; `renderObjectiveFlag(flagEl, badgeEl, {visible, done, total})` and `pulseObjectiveFlag(flagEl)` drive the edge flag; `renderObjectiveList(listEl, objectives)` renders a snapshot's objective array and is shared by the panel and the game-over summary (it clamps `current` for the meter while printing the raw number, and gives `enduring` objectives no meter at all, since their goal is a limit rather than a target); `showObjectivePanel`/`hideObjectivePanel`; `renderVerdict(labelEl, text)` writes the game-over headline; `renderGameOverObjectives(listEl, objectives)` fills the game-over summary and hides it entirely when there were no objectives. `renderCorner(cornerEl, word, blankIndices = [])` rebuilds the corner's `.word` span's children rather than setting `textContent`: characters at positions listed in `blankIndices` (see `js/gameState.js`) are wrapped in a `.blank-letter` span (styled gold via `--accent`, `css/style.css`), everything else is a plain text node — every call site passes the corner's `state.blankIndices[corner]` (`main.js`) so this stays in sync with which letters were placed via the blank. `renderLetter` is generic — used for both choice-letter elements, the preview-letter element, and (in the idle code) the legacy current/next-letter elements. `renderHold(holdSlotEl, holdLetterEl, letter)` sets the letter text and toggles `.occupied`/`.empty` on the slot — only called from idle code now. `renderClosedCorner`/`resetCornerVisuals` only toggle the `.closed`/`.invalid` classes on the corner div itself — there's no separate submit button to enable/disable. `renderUndoAvailability(undoBtn, available)` toggles `undoBtn.disabled`. `showWordFeedback(cornerEl, wordLength, points, blankAwarded = false)` takes an optional fourth argument; when true it adds a third `.word-feedback-blank` ("Blank Tile Earned") span alongside the length/points ones — `main.js` passes `word.length >= BLANK_AWARD_LENGTH && !hadBlank` for it, so the message and the actual blank award (`awardBlankIfEligible`, called separately right after) always agree on both the length threshold and the "word already contains a blank" exclusion (see "Blank letter" below). `renderBlankPickerOptions(gridEl)` builds the 26 `.blank-picker-btn` letter buttons into `#blank-picker-grid` once at startup (`main.js` then attaches a single delegated click listener, rather than one per letter). `showBlankPicker`/`hideBlankPicker` toggle the `hidden` attribute on `#blank-picker`. `renderBlankBubble(slotEl, pending)` toggles `hidden` on `#blank-slot`. `setChoicesBlocked(bubbleEls, blocked)` toggles the `.blocked` class on the two `.choice-bubble` elements. `renderEnvBadge(badgeEl, label)` writes the top-bar environment badge and hides it again when `label` is empty — which environment deserves which label (or none) is decided in `js/env.js`/`main.js`, not here. `renderBestScore(rowEl, valueEl, score)` fills one game-over best-score row, or hides the row entirely when `score` isn't a number — so a missing best (nothing recorded yet, or the request failed) shows nothing rather than a placeholder dash.
+- `js/main.js` — wires modules together, owns the turn loop and corner-tap handlers, awaits `loadWordList()` before enabling drag. `start()` opens by calling `renderEnvBadge(envBadgeEl, isProduction() ? null : 'Test')` — the single line that decides whether the TEST badge shows, before anything else happens, so a mid-load error can't leave a test build looking like production. `drawNextLetter()` draws one fresh letter into `state.nextLetter` (the preview) and re-renders `#preview-letter`, passing `getRandomLetter` both current choice slots' letters (`state.choices.filter(Boolean)`) so the vowel/consonant no-3-of-a-kind rule in `letterSource.js` can see them. `advanceChoice(index)` is the refill step: it moves the current `state.nextLetter` into `state.choices[index]`, re-renders that bubble, then calls `drawNextLetter()` to draw a new preview — this "queue advances" behavior (both choice slots pulling from one shared upcoming-letter preview) is the core mechanic, replacing the old three-choice system's independent per-slot redraw. `initRound()` draws both choice slots fresh (unconstrained for slot 0, constrained against slot 0 for slot 1 — so the two choices are free to share a category) and then calls `drawNextLetter()` once, so the preview is the one draw constrained against both choices. `handleDrop(index, targetName)` (guarded by `state.blankPending` — a normal choice can't be dropped while a blank is pending, on top of the `.blocked` class already stopping the drag from starting) appends `state.choices[index]` to the target corner, closes the corner immediately if the resulting letters have no valid completion (rechecked after every append, not just once 5+ letters), then calls `advanceChoice(index)`, and records `lastMove = { type: 'choice', ... }` for undo. Each `.corner` has a `click` listener calling `handleSubmit(cornerEl.dataset.corner)` directly — the corner box itself is the submit button; `handleSubmit` is also a no-op while `state.blankPending` is true, since word submission is disabled until the blank is placed. `handleSubmit` only scores when `word.length >= MIN_WORD_LENGTH` (`3`) *and* `isValidWord(word)` — a dictionary-valid word shorter than that is treated the same as an invalid one (shake, corner left as-is), so the player can keep building past it rather than being stuck. On a valid submit, `handleSubmit` first reads `state.blankIndices[cornerName].length > 0` into `hadBlank` (before `clearCorner` resets it) and calls `awardBlankIfEligible(word, hadBlank)`, which sets `blankPending` only when `!hadBlank && word.length >= BLANK_AWARD_LENGTH` (`5`, the one tuning knob for the length side of this feature) and re-renders the blank bubble/blocked choices via `renderBlankState()` — see "Blank letter" below for why a word containing a blank-derived letter is excluded. `handleBlankDrop(targetName)` (the `onDrop` for `#blank-bubble`'s `initDrag`) just records `targetName` in the module-level `pendingBlankCorner` and opens `#blank-picker` — it doesn't touch game state yet, since the letter isn't chosen. `handleBlankLetterChosen(letter)` (wired to a single delegated click listener on `#blank-picker-grid`) is what actually appends `letter` to `pendingBlankCorner`'s word via `appendBlankLetterToCorner` (not `appendLetterToCorner` — this is what marks the position gold and blank-award-ineligible), runs the same immediate dead-end closing check as `handleDrop`, clears `blankPending`, hides the picker, and records `lastMove = { type: 'blank', corner, closedNow }` — there's no `letter` needed in that record since undoing a blank placement never restores a specific letter into a slot, it just re-arms `blankPending` (see "Undo" below). `endGame()` is the single game-over path (called from both `handleDrop` and `handleBlankLetterChosen`, replacing the direct `renderGameOver` calls those used to make): it shows the overlay immediately using the module-level `cachedBests` — seeded by a `fetchHighScores()` at startup that is deliberately *not* awaited, since the bests are only needed on the game-over screen and shouldn't delay the first turn — then posts the game via `submitGame` and re-renders with the bests the server returns, so a new personal or all-time high appears on the same screen that set it. A `gameRecorded` flag makes the post idempotent, and a failed post is silent (the overlay just keeps showing the previous bests, or none). `endGame` also resolves the objective verdict: `objectives.finish()` returns the final snapshot, from which it writes the headline (`'You Win!'` only when the status is `won`; an endless game finishes `active` and keeps `'Game Over'`) and fills `#game-over-objectives`. **Splash flow:** `startGame(mode)` replaced `resetGame` as the single entry point for beginning play — it rebuilds `state`, calls `objectives.reset(mode)` (which re-runs the mode's `selectObjectives()`, so a pool-backed mode re-rolls per game), re-renders everything including a fresh `initRound()`, and hides the splash; `#new-game-btn` is wired to `returnToSplash` instead, so every game starts from the mode choice. `handleModeChosen(modeId)` either starts immediately (Endless) or calls `showDifficultyStep(modeId)`, which rebuilds the tier buttons labelled with the *range* of deal sizes that tier can produce (`dealSizeRangeFor`) — a tier no longer fixes how many objectives you get, and the budget itself is deliberately not shown because the game already means "score" by "points". The mode buttons are rendered only *after* `loadWordList()` resolves, replacing the markup's `.splash-loading` placeholder, so a first tap can't start a game whose word checks would throw. **Objective HUD:** `renderObjectiveState()` reads `objectives.snapshot()` and nothing else — no game state — and is subscribed via `objectives.onChange`, so it also re-renders on the rewind an undo performs. It bumps the flag (`pulseObjectiveFlag`) only when a `current`/`status` signature actually changes, since the runtime notifies on every event and most events move nothing an objective cares about; `lastObjectiveSignature` is cleared in `startGame` so a new game's first render can't be mistaken for progress. A module-level `lastMove` variable holds a single-level undo record, tagged by `type` (`'choice'`: `{index, corner, closedNow, prevChoiceLetter, prevNextLetter}`, or `'blank'`: `{corner, closedNow}`) written by `handleDrop`/`handleBlankLetterChosen` and consumed by `handleUndo` (wired to `#undo-btn`), which branches on `lastMove.type`. See "Undo" below for the full behavior. Below `start()`, a block of `legacy*`-prefixed functions (`legacyNextTurn`, `legacyHandleHoldDrop`, `legacyHandleDropToHold`) reproduces the previous single-letter + hold turn loop; they are never called and depend on the hidden `#legacy-controls` elements — kept only in case that flow (or a hold mechanic layered onto the two-choice-plus-preview board) is revisited. That legacy code reads/writes `state.nextLetter` directly, the same field the active preview logic uses — harmless only because it's never called; if the legacy flow is ever revisited it would need its own field or explicit handoff logic. **Objective wiring** (see "Objectives" below) is confined to: the module-level `objectives` runtime (created with `NO_OBJECTIVES` and swapped to the chosen mode by `startGame` — there is no build-time mode constant any more), an `objectives.emit(...)` call at each of the seven moments in `events.js`, `objectives.mark()` at the top of `handleDrop`/`handleBlankLetterChosen` (stored as `objectiveMark` on `lastMove`), `objectives.rewindTo(lastMove.objectiveMark)` at the top of `handleUndo` (before the type branch, since both branches reverse exactly one move), `objectives.commit()` where `handleSubmit` clears `lastMove`, `objectives.reset(mode)` in `startGame`, `objectives.onChange(renderObjectiveState)` in `start()`, and `objectives.emit(GAME_ENDED)` + `objectives.finish()` in `endGame`. `maybeEndGame()` replaces the old bare `if (state.gameOver) endGame()` at the end of `handleDrop`/`handleBlankLetterChosen` (and is now called from `handleSubmit` too, since completing an objective can end a game on a *submission* — something the corner-closure rule alone could never do). `awardBlankIfEligible` gained a leading `cornerName` parameter purely so the `BLANK_AWARDED` event can name the corner.
+- `js/objectives/*.js` — the objective system, seven modules; see "Objectives" below for the design. `events.js` (the event vocabulary `main.js` emits, with every payload shape documented, plus which events survive an undo), `difficulty.js` (the `Difficulty` tiers — easy/medium/hard/expert — their order, labels, and `assertDifficulty`; a tier is only a name here, what it is *worth* lives in `POINT_BUDGETS`), `definitions.js` (the catalog of objective *types* and their defaults; four entries — `wordsOfLength`, `words`, `totalScore`, `wordsInCorner` — with no knowledge of difficulty at all: `resolveParams` layers only defaults → explicit params), `tracker.js` (specs → live instances, folding events into progress, resolving each objective's status), `modes.js` (which objectives are in play and what ends the game; `NO_OBJECTIVES`/`challenge`/`defineMode`/`createMode`, the `GAME_MODES` table with its `endless` and `objective` rows, **and the whole balancing surface** — `POINT_BUDGETS`, the priced `OBJECTIVE_POOL`, `selectWithinBudget`/`feasibleDealSizes`/`dealSizeRangeFor`, and a module-load validator that rejects an unspendable budget, a missing tier budget, a bad `cost`, or an unknown type), `runtime.js` (the single object `main.js` holds: event log, counters, verdict, undo-by-replay), `index.js` (the facade — `main.js` imports from here and nothing else in the directory).
 - `src/index.js` (project root, **not** under `public/`) — the Worker entry point. Its `fetch` handler routes `POST /api/games` and `GET /api/scores` to `src/api/`, and hands anything else to `env.ASSETS.fetch(request)`. Worth understanding: static assets are matched *before* the Worker runs (that's the default with `[assets]` in `wrangler.toml`, absent `run_worker_first`), so this handler only ever sees `/api/*` plus paths that match no file — which is why the non-API branch just delegates back to the assets binding for its 404 rather than inventing one.
 - `src/api/games.js`, `src/api/scores.js`, `src/api/shared.js` — the two route handlers plus their shared helpers. `shared.js` holds `json()` and `readBests(env, playerId)`, which runs the two `MAX(score)` queries as one `env.DB.batch(...)` and returns `{ globalBest, personalBest }` — the identical shape both routes return, so the client has one response format to handle. `games.js` validates every numeric field as a non-negative integer under a generous cap and rejects payloads whose per-length word counts don't sum to `wordsTotal`; those checks exist to keep a typo or stray script out of the dataset, not to stop a determined cheater (nothing client-side can), so widen the caps rather than working around them if real play ever exceeds them.
 - `db/schema.sql` (project root) — the single `games` table plus its two indexes, one row per completed game. Both databases use it. Apply it with `npm run db:init` (local), `npm run db:init:staging`, or `npm run db:init:production`.
@@ -133,9 +133,9 @@ directly rather than scraping the unlicensed repo.
 from first paint) offering two modes. **Endless** is the game exactly as
 production has always played it: no objectives, no verdict, ends when all
 four corners close. **Objective** asks for a difficulty first (Easy /
-Medium / Hard / Expert, each labelled with how many objectives it deals —
-1 / 2 / 3 / 4) and then deals that many random objectives, each tuned to
-the chosen tier. A gold flag on the right edge of the board carries a
+Medium / Hard / Expert) and then deals a random set of objectives costing
+exactly that tier's points budget — so the *number* of goals varies from
+game to game, and Easy might be one demanding goal or four small ones. A gold flag on the right edge of the board carries a
 `done/total` badge, bumps when an objective advances, and opens a panel
 listing every objective with a progress meter. Completing them all ends
 the game as a win on the spot, corners still open; the board closing first
@@ -307,11 +307,11 @@ pill is likewise gated on `!hadBlank`, so the on-screen feedback always
 agrees with whether a blank was actually awarded.
 
 ## Objectives
-Goals the game sets the player, scaled by a difficulty tier the player
-picks on the splash screen. **The system is live** — it is what the
-"Objective" mode on the splash runs on. Endless is the same runtime with
-an empty objective list, which the runtime detects and skips all its
-bookkeeping for, so Endless plays exactly as the game always has.
+Goals the game sets the player, drawn against a points budget set by the
+difficulty tier they pick on the splash screen. **The system is live** —
+it is what the "Objective" mode on the splash runs on. Endless is the same
+runtime with an empty objective list, which the runtime detects and skips
+all its bookkeeping for, so Endless plays exactly as the game always has.
 
 **The catalog is deliberately small.** Four definitions and two game
 modes. An early draft shipped eleven definitions, a `RANDOM_POOL`, and a
@@ -320,48 +320,84 @@ any of it was used, and the catalog was rebuilt one objective at a time as
 modes actually needed them. Keep doing that — add an objective when
 something asks for it, not in anticipation.
 
-### The three extension points
+### `cost`, not `points`
+Each pool row carries a **`cost`**: how hard that exact tuning is, in
+budget points. It is deliberately not called `points`, because the game
+already means *score* by that word — `event.points`, and `totalScore`'s
+own `params.points`, which sits directly beside it on the same row:
+
+```js
+{ type: 'totalScore', params: { points: 230 }, cost: 6 }
+```
+
+Same reasoning keeps the budget off the difficulty buttons: a tier
+labelled "8 points" next to a score badge reads as a target, not a
+difficulty. The splash shows the range of *deal sizes* instead.
+
+### The extension points
 This is the shape the whole system is arranged around, and the thing to
 preserve when adding to it. Each is edited independently of the others:
 
 | To add… | Edit | Cost |
 |---|---|---|
-| an objective type | one entry in `definitions.js` + one row in `OBJECTIVE_POOL` | nothing else changes |
+| an objective type | one entry in `definitions.js` + priced rows in `OBJECTIVE_POOL` | nothing else changes |
+| a tuning of an existing objective | one priced row in `OBJECTIVE_POOL` | nothing else changes |
 | a game mode | one row in `GAME_MODES` (`modes.js`) | appears on the splash automatically |
-| a difficulty tier | one entry in `difficulty.js` + a column in each `byDifficulty` table | validator names every table still missing it |
-| how many objectives a tier deals | one number in `OBJECTIVES_PER_DIFFICULTY` | nothing else changes |
+| a difficulty tier | one entry in `difficulty.js` + one number in `POINT_BUDGETS` | validator rejects a budget the pool can't spend |
+| how demanding a tier is | one number in `POINT_BUDGETS` | nothing else changes |
 
-A mode names *which* objectives; the difficulty tier supplies *the
-numbers*. That separation is why "swap in objectives based on game mode
-and selected difficulty" is `createMode(id, difficulty)` and nothing more.
+A mode names *which* objectives are available and what each is worth; the
+difficulty tier supplies only *how much* may be spent. That separation is
+why "swap in objectives based on game mode and selected difficulty" is
+`createMode(id, difficulty)` and nothing more.
 
 ### The Objective mode
 `createMode('objective', tier)` deals a random set drawn from
-`OBJECTIVE_POOL`, sized by `OBJECTIVES_PER_DIFFICULTY` (Easy 1, Medium 2,
-Hard 3, Expert 4 — both tables are in `modes.js` and are meant to be
-edited). Two things worth knowing about the draw:
+`OBJECTIVE_POOL` costing **exactly** the tier's budget in `POINT_BUDGETS`
+(Easy 4, Medium 8, Hard 12, Expert 16 — both tables are in `modes.js` and
+are meant to be edited). Four things worth knowing:
 
-- **It picks distinct objective *types* first, then one variant of each.**
-  Pool rows sharing a `type` are variants — the four `wordsInCorner` rows
-  (one per corner) are one objective, not four. Without this a player
-  could be dealt "4 words in NW" and "4 words in SE" as two of three
-  goals. `drawObjectives` caps at the number of distinct types available,
-  so asking for more than the pool can distinctly supply deals what it can
-  rather than repeating.
-- **Difficulty stacks.** A higher tier deals *more* objectives *and* tunes
-  each one harder. Expert is four objectives each at its expert number, so
-  raising a tier makes the game harder twice over — worth remembering when
-  retuning either table.
+- **A tier fixes the total cost, not the number of objectives.** Easy is
+  one 4-cost objective, or two 2-cost ones, or a 3 and a 1, or four 1s.
+  This is the whole point of the design: how *many* goals and how *big*
+  each one is are free to vary as long as they sum to the budget.
+- **Deal size is picked first, uniformly among the sizes that can be spent
+  exactly, and only then is a combination found.** Without that, the search
+  biases hard toward using every type — the "take a row" branches vastly
+  outnumber the single "skip" branch at each step — and an Easy game would
+  be four 1-cost objectives almost every time. With it, the four possible
+  Easy sizes come up about equally (measured ~189/212/201/198 over 800
+  deals).
+- **At most one row per type.** Rows sharing a `type` are alternative
+  *tunings*, so a player is never dealt "score 8 three-letter words"
+  alongside "score 18" of them, where the first is just a milestone of the
+  second. This caps a deal at four objectives until the catalog grows,
+  which is why Expert's budget of 16 needs 6-cost rungs to be spendable.
+- **Difficulty no longer touches an objective's params.** A harder tier
+  buys bigger objectives *because it can afford dearer rows*, not because
+  anything rescales — an emergent effect, and a measurable one (mean goal
+  per objective is ~19 at Easy, ~55 at Expert).
+
+`selectWithinBudget` throws if a budget can't be spent exactly, but that
+should never be reached at runtime: a module-load validator in `modes.js`
+checks every mode's every tier, plus that each pool row names a real
+definition and carries a positive integer cost. A pool that can't pay a
+budget is a startup error naming the tier, not a player picking Hard and
+getting nothing. Keep a **1-cost rung for every type** so any remainder is
+always fillable — the suite asserts this.
 
 The draw happens inside `selectObjectives()`, which the runtime calls at
 game start and on every reset, so each new game re-rolls rather than
 replaying the set the mode object was built with.
 
-**These numbers have not been playtested.** Every `byDifficulty` table was
-chosen by reasoning about the scoring curve and how long a board survives,
-not by playing games. Expert in particular asks for a lot at once. If a
-tier feels wrong, the tables in `definitions.js` (per objective) and
-`OBJECTIVES_PER_DIFFICULTY` (how many) are the only two places to change.
+**These numbers have not been playtested.** Every `cost` and every budget
+was chosen by reasoning about the scoring curve and how long a board
+survives, not by playing games. Two independent dials to turn if a tier
+feels wrong, both in `modes.js`: a row's `cost` (that tuning is mispriced
+relative to its peers) and `POINT_BUDGETS` (the whole tier is too heavy or
+too light). Reprice a row and every tier that can afford it shifts at
+once, which is the point — but it also means a mispriced row is felt
+across the board.
 
 ### The layers
 Five, each ignorant of the one above it:
@@ -376,63 +412,48 @@ Five, each ignorant of the one above it:
 2. **`difficulty.js` — the tiers.** `Difficulty.EASY|MEDIUM|HARD|EXPERT`,
    plus `DIFFICULTY_ORDER` (easiest first — a future "next difficulty"
    button reads it), labels, `DEFAULT_DIFFICULTY` (`easy`), and
-   `assertDifficulty`. A tier is *only a name here*; what it means is
-   decided per objective, so "harder" can be a bigger count for one
-   objective and a longer word for another without this file knowing
+   `assertDifficulty`. A tier is *only a name here* — what it is worth
+   lives in `POINT_BUDGETS` (`modes.js`), so this file stays a plain
+   vocabulary that the splash, the budget table, and any future
+   tier-dependent feature can each key off independently, without this
+   file knowing
    about either. `assertDifficulty` throws on an unknown tier for the
    same reason `getDefinition` does — a typo in a mode or a saved
    preference should surface immediately, not hand the player the wrong
    tuning silently. `null` is a legal value meaning "no tier, use plain
    defaults".
 3. **`definitions.js` — the catalog.** One entry per objective *type*,
-   parameterized, so "5 three-letter words" and "20 three-letter words"
-   are the same definition at two difficulties, and "3 five-letter words"
-   is the same definition again with a different `length`. This is the
-   balancing surface. Definitions are pure functions over
-   `(progress, event, params)` — no DOM, no state, no randomness, which
-   is what makes replay (below) safe.
+   parameterized, so "8 three-letter words" and "18 three-letter words"
+   are the same definition at two tunings, and "4 words of 5+ letters" is
+   the same definition again with a different `length`. Definitions are
+   pure functions over `(progress, event, params)` — no DOM, no state, no
+   randomness, which is what makes replay (below) safe.
 
-   Ships **four**:
+   Ships **four**: `wordsOfLength` (`count`, `length`, `exact`), `words`
+   (`count`), `totalScore` (`points`), `wordsInCorner` (`count`,
+   `corner`).
 
-   | id | asks for | easy / medium / hard / expert |
-   |---|---|---|
-   | `wordsOfLength` | words of a given length (`length`, `exact`) | 5 / 10 / 15 / 20 |
-   | `words` | words cleared, any length | 6 / 10 / 14 / 18 |
-   | `totalScore` | points (curve allows for superlinear scoring) | 50 / 100 / 160 / 220 |
-   | `wordsInCorner` | words cleared in one named corner | 2 / 4 / 6 / 8 |
-
-   Params resolve in four layers, each beating the one before:
-   **`defaults` < `byDifficulty[tier]` < the spec's own `byDifficulty[tier]`
-   < the spec's own `params`.** So a mode that states a param explicitly
-   always wins, and a mode that states nothing gets the tier's tuning.
-
-   That third layer — a **per-spec** `byDifficulty` — exists for *variants*
-   of one definition that can't share a curve. `OBJECTIVE_POOL` has both a
-   3-letter and a 4-letter `wordsOfLength`; four-letter words are far
-   harder to land, so the 4-letter row carries its own 3 / 6 / 9 / 12.
-   The alternatives were both worse: a duplicate definition, or a
-   hard-coded `count` in `params` — and a hard-coded count would stop
-   difficulty flushing through to that objective at all, which is the one
-   thing the tier exists to do.
-
-   `defineObjective()` wraps every definition and **throws at module load
-   if a `byDifficulty` table doesn't cover every tier in
-   `DIFFICULTY_ORDER`**. That's what makes adding a fifth difficulty safe:
-   it's a startup error naming each table to update, not a tier that
-   quietly plays at default difficulty. A definition that shouldn't scale
-   omits `byDifficulty` entirely and every tier gets its `defaults`.
+   **Difficulty is deliberately absent from this file.** Params resolve in
+   two layers — `defaults` < the spec's own `params` — and nothing here
+   knows tiers exist. How hard a given tuning is gets expressed as a
+   `cost` on the pool row in `modes.js`, which is also where the balancing
+   now lives. An earlier design had per-definition and per-spec
+   `byDifficulty` tables rescaling every objective to the player's tier;
+   the budget replaced all of it, and `defineObjective`'s tier-coverage
+   validator went with it.
 4. **`tracker.js` — live objectives.** Turns plain-data *specs* into
    instances with progress and status (`active`/`complete`/`failed`). A
-   spec is `{ type, params }` with optional `id`/`description`/
-   `difficulty` overrides, and `params` may be partial — defaults and the
-   tier fill the rest. A spec's own `difficulty` beats the mode's, so one
-   mode can mix tiers if it ever needs to. Specs being plain JSON is what
-   lets modes, difficulty tiers, and (later) server-delivered objectives
-   all be the same thing.
+   spec is `{ type, params }` with optional `id`/`description` overrides,
+   and `params` may be partial — the definition's defaults fill the rest.
+   A pool row is a spec plus a `cost`, which matters only to the selector
+   and is ignored here. Specs being plain JSON is what lets modes, the
+   priced pool, and (later) server-delivered objectives all be the same
+   thing.
 5. **`modes.js` — what's in play and what ends the game.** A mode
    supplies `selectObjectives()` (called fresh at game start and on every
    reset, so a mode that varies its set re-rolls per game), `difficulty`
-   (the tier its objectives resolve at), `limits` (`moves`, `seconds`),
+   (carried for labelling only, now that params don't depend on it),
+   `limits` (`moves`, `seconds`),
    and the flags `endOnComplete`/`endOnFailure`. The standard evaluator
    handles win/lose; a mode can override `evaluate` outright if it needs
    different rules. Built-ins: `NO_OBJECTIVES` (the shipped default),
@@ -443,11 +464,17 @@ Five, each ignorant of the one above it:
    in the order the splash lists them: `endless` and `objective`. A row
    supplies its objectives one of two ways: a fixed `objectives` array
    (which may name a type outright, `'wordsOfLength'`, or give a spec with
-   overrides), or a `pool` plus `perDifficulty` for a random draw. It also
+   overrides), or a `pool` plus `budgets` for a priced draw. It also
    carries the splash copy (`label`, `blurb`) and `usesDifficulty`, which
    is what the splash reads to decide whether to ask for a tier at all —
    Endless skips that step. Adding a row is all it takes to put a new mode
    on the splash.
+
+   This file also owns the draw: `POINT_BUDGETS`, the priced
+   `OBJECTIVE_POOL` (with a `perCorner` helper so the four corner variants
+   of a rung are one line rather than four), `selectWithinBudget`,
+   `feasibleDealSizes`, `dealSizeRangeFor` (what the splash labels a tier
+   with), and the module-load validator.
 
 `runtime.js` glues them together and is the only thing `main.js` holds.
 
@@ -499,28 +526,32 @@ There is no build-time switch any more — the splash picks the mode, and
   `snapshot().finished` to tell "no verdict" from "not over yet".
 
 ### Adding to it
-- **A new objective type**: one entry in `definitions.js` — `defaults`, a
-  `byDifficulty` table covering every tier (or none at all), and the
-  progress functions — plus a row in `OBJECTIVE_POOL` so the draw can
-  reach it. Most are one declarative call to the `counting()` helper
-  ("count matching events up to a number"); for other progress shapes the
-  pattern is a plain object with its own `initial`/`advance`/`measure` — a
-  maximum, a set stored as an array so it survives the replay round trip,
-  or an `enduring` limit that can't be completed early, only survived, and
-  resolves at game end. Nothing else changes — not the tracker, not the
-  runtime, not `main.js`, not the UI.
-- **A variant of an existing objective**: another `OBJECTIVE_POOL` row with
-  the same `type`. The draw treats same-type rows as one objective and
-  picks between them, so variants never crowd each other out of a deal.
-  Give it its own `byDifficulty` if it can't share the definition's curve.
+- **A new objective type**: one entry in `definitions.js` — `defaults` plus
+  the progress functions — and **priced rows in `OBJECTIVE_POOL`, including
+  a 1-cost rung**, so the draw can reach it and any remainder stays
+  fillable. Most definitions are one declarative call to the `counting()`
+  helper ("count matching events up to a number"); for other progress
+  shapes the pattern is a plain object with its own
+  `initial`/`advance`/`measure` — a maximum, a set stored as an array so it
+  survives the replay round trip, or an `enduring` limit that can't be
+  completed early, only survived, and resolves at game end. Nothing else
+  changes — not the tracker, not the runtime, not `main.js`, not the UI.
+  Note a new type also *raises the ceiling on deal size*, since deals take
+  at most one row per type.
+- **A tuning of an existing objective**: another `OBJECTIVE_POOL` row with
+  the same `type` and its own `cost`. The draw treats same-type rows as
+  alternatives and picks at most one, so tunings never crowd each other out
+  of a deal. This is how a 3-letter and a 4-letter word hunt coexist at
+  wildly different counts without either needing its own definition.
 - **A new game mode**: one row in `GAME_MODES` — it appears on the splash
   with no further work. If it needs rules the standard evaluator can't
   express, build it with `defineMode`/`challenge` and pass your own
   `evaluate`.
-- **A new difficulty tier**: add it to `Difficulty` and
-  `DIFFICULTY_ORDER`, add a column to every `byDifficulty` table (the
-  `defineObjective` validator throws naming the ones you miss) and an
-  entry in `OBJECTIVES_PER_DIFFICULTY`. The splash picks it up on its own.
+- **A new difficulty tier**: add it to `Difficulty` and `DIFFICULTY_ORDER`,
+  and give it a number in `POINT_BUDGETS`. The validator refuses a budget
+  the pool can't spend exactly, and the splash picks the tier up on its
+  own. Nothing per-objective needs touching — that is the main thing the
+  budget bought over the old per-definition tier tables.
 - **The HUD**: `objectives.onChange(listener)` fires a serializable
   snapshot (`{mode, status, reason, finished, counters, objectives}`) on
   every change; each objective carries `description`, `current`, `goal`,
@@ -615,9 +646,16 @@ built from the `dev` branch with `npx wrangler deploy --env staging`.
 Both are Workers; neither is a Pages project.
 
 ## Not yet built (ask before assuming scope)
-- **Playtesting the difficulty curves.** Every `byDifficulty` table is a
-  first-pass guess — see the warning under "Objectives". Expert (four
-  objectives, each at its hardest number) is the most likely to be wrong.
+- **Playtesting the costs and budgets.** Every `cost` in `OBJECTIVE_POOL`
+  and every number in `POINT_BUDGETS` is a first-pass guess — see the
+  warning under "Objectives". The specific thing to watch is whether rows
+  sharing a cost really are comparable work: the selector treats a 4-cost
+  corner objective and a 4-cost points objective as interchangeable, so if
+  one is much harder, some deals at a tier will be far worse than others.
+- **Deal-size labelling on the splash.** Medium and Hard both show "2–4
+  goals" — true, but not discriminating, since they differ in weight
+  rather than count. A difficulty meter, or exposing the budget under a
+  name that doesn't collide with score, would say more.
 - **Remembering the player's choice.** The splash asks every game; nothing
   persists the last mode/difficulty (localStorage? the database, next to
   the player id?). Undecided.

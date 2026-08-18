@@ -3,14 +3,15 @@
 // event log, the mode, and the win/lose verdict all live in runtime.js.
 //
 // A *spec* is the plain-data form an objective is authored in, so a game
-// mode's objective list is just JSON:
-//   { type: 'wordsOfLength', params: { length: 3, exact: true } }
+// mode's objective list — and the priced pool it may be drawn from — is
+// just JSON:
+//   { type: 'wordsOfLength', params: { length: 3, exact: true, count: 8 } }
 //   { type: 'wordsOfLength', params: { length: 7 }, id: 'big-word',
 //     description: 'Land one seven-letter monster' }
-// `params` may be partial — the definition's defaults and the difficulty
-// tier fill the rest (see resolveParams in definitions.js). `id`,
-// `description`, and `difficulty` are optional overrides; a spec's own
-// `difficulty` wins over the mode's, for a set that mixes tiers.
+// `params` may be partial — the definition's defaults fill the rest (see
+// resolveParams in definitions.js). `id` and `description` are optional
+// overrides. A pool row additionally carries `cost`, which matters only to
+// the selector in modes.js and is ignored here.
 //
 // An *instance* adds the resolved params plus mutable progress/status.
 
@@ -28,15 +29,10 @@ function clone(value) {
   return value === null || typeof value !== 'object' ? value : JSON.parse(JSON.stringify(value));
 }
 
-export function instantiateObjectives(specs = [], difficulty = null) {
+export function instantiateObjectives(specs = []) {
   return specs.map((spec, index) => {
     const definition = getDefinition(spec.type);
-    const params = resolveParams(
-      spec.type,
-      spec.params,
-      spec.difficulty ?? difficulty,
-      spec.byDifficulty
-    );
+    const params = resolveParams(spec.type, spec.params);
     return {
       id: spec.id ?? `${spec.type}-${index + 1}`,
       type: spec.type,

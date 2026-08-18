@@ -1,15 +1,15 @@
 // The difficulty tiers, and nothing else.
 //
-// A tier is just a name. What it *means* is decided per objective, in the
-// `byDifficulty` table each definition carries (see definitions.js) — so
-// "harder" can mean a bigger count for one objective, a longer word for
-// another, and a tighter limit for a third, without this file knowing
-// anything about any of them.
+// A tier is just a name. What it is *worth* lives in `POINT_BUDGETS`
+// (modes.js): a tier buys a number of budget points, and the Objective
+// mode spends them on priced objectives. Nothing about an objective's
+// own numbers is decided here, or anywhere keyed off these names — which
+// is what lets the splash, the budget table, and any future
+// tier-dependent feature each key off this vocabulary independently.
 //
-// Adding a tier is a line here plus a column in each definition's
-// byDifficulty table; the validator in definitions.js will point at every
-// table that still needs one rather than letting a tier silently fall back
-// to defaults.
+// Adding a tier is a line here plus a number in POINT_BUDGETS; the
+// validator in modes.js refuses a budget the pool cannot spend exactly,
+// rather than letting a tier silently deal nothing.
 
 export const Difficulty = Object.freeze({
   EASY: 'easy',

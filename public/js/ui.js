@@ -143,10 +143,10 @@ export function renderModeOptions(containerEl, modes) {
   });
 }
 
-// Each tier shows how many objectives it deals, so the player picks with
-// that in front of them rather than discovering it on the board. `note` is
-// supplied by the caller (main.js asks objectiveCountFor) — this stays a
-// pure renderer and doesn't know what a mode is.
+// Each tier shows a short `note` about what it deals, so the player picks
+// with that in front of them rather than discovering it on the board. The
+// note is composed by the caller (see showDifficultyStep in main.js) —
+// this stays a pure renderer and doesn't know what a mode or a tier is.
 export function renderDifficultyOptions(containerEl, difficulties) {
   containerEl.innerHTML = '';
   difficulties.forEach((difficulty) => {
