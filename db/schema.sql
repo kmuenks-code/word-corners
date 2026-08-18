@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS game_objectives (
   final_value  INTEGER NOT NULL,
   -- An enduring objective is a limit survived rather than a target hit, so
   -- its `goal` reads as a ceiling and `final_value` climbing toward it is
-  -- bad news. None ship yet; the column keeps such a row interpretable.
+  -- bad news. cornerWordLimit is the one that ships today.
   enduring     INTEGER NOT NULL DEFAULT 0,
 
   -- 1 complete, 0 failed. Stored as 0/1 rather than the status text so the

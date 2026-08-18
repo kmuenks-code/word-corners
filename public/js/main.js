@@ -229,15 +229,12 @@ function showModeStep() {
   renderSplashStep(splashModesEl, splashDifficultyEl, 'modes');
 }
 
-// The tier buttons are rebuilt per mode, since what a tier deals is a
-// property of the mode's pool — Endless would say "0" for all four, which
-// is exactly why it never reaches this step.
-//
-// A tier no longer fixes how many objectives you get, only their combined
-// cost, so this shows the range of deal sizes that cost can be spent on.
-// Deliberately not the budget itself: the game already means "score" by
-// "points", and a tier labelled "8 points" next to a score badge would read
-// as a target rather than a difficulty.
+// The tier buttons carry nothing but their labels. Two things that could
+// go on them were tried and dropped: the budget itself reads as a target
+// next to the score badge, since the game already means "score" by
+// "points"; and the range of deal sizes a tier can produce overlaps so
+// heavily between tiers that it discriminated between them by almost
+// nothing. See "Not yet built" in CLAUDE.md before adding a third.
 function showDifficultyStep(modeId) {
   pendingModeId = modeId;
   renderDifficultyOptions(splashDifficultyOptionsEl, listDifficulties());

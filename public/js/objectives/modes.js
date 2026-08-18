@@ -185,9 +185,14 @@ function perCornerWordLimit(limit, cost) {
 // never handed "score 8 three-letter words" alongside "score 18" of them,
 // where the first is just a milestone of the second.
 //
-// Costs are reasoned, not playtested — see the warning in CLAUDE.md. The
-// ladder runs 1 / 2 / 3 / 4 / 6, and every type has a 1-cost rung so any
-// leftover budget can always be filled.
+// Costs are reasoned, not playtested — see the warning in CLAUDE.md.
+// Rungs run 1 through 6 plus an 8, not every step at every type. What
+// actually has to hold is that *some* 1-cost rows exist, so any leftover
+// budget can be filled; a type may skip its own 1-cost rung to put itself
+// out of reach at the smallest budgets, and wordsStartingWithVowel
+// (cheapest 2) and cornerOnlyLength (cheapest 4) both do. The module-load
+// validator below is what proves each tier spendable — the rungs are the
+// habit that keeps that true, not the proof.
 export const OBJECTIVE_POOL = Object.freeze([
   // Word hunts by exact length. Longer words are far harder to land, so
   // the counts drop sharply as `length` rises for the same cost.
@@ -249,9 +254,7 @@ export const OBJECTIVE_POOL = Object.freeze([
   // route around it too. Deliberately no 1- or 2-cost rung — this type is
   // meant to be out of reach at Easy's smallest budgets. (Feasibility at
   // every tier still holds: other types already carry the pool's 1-cost
-  // rows, which is all `selectWithinBudget` needs to fill a remainder —
-  // see the "1-cost rung for every type" note in CLAUDE.md, which is
-  // about *this type's own* reachability, not a hard requirement.)
+  // rows, which is all `selectWithinBudget` needs to fill a remainder.)
   ...perCornerOnlyLength(5, 4),
   ...perCornerOnlyLength(6, 6),
 
