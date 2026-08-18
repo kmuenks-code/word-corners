@@ -233,8 +233,8 @@ export const OBJECTIVE_POOL = Object.freeze([
   // Points. Climbs steeply because word scoring is superlinear.
   { type: 'totalScore', params: { points: 20 }, cost: 1 },
   { type: 'totalScore', params: { points: 40 }, cost: 2 },
-  { type: 'totalScore', params: { points: 60 }, cost: 3 },
-  { type: 'totalScore', params: { points: 80 }, cost: 4 },
+  { type: 'totalScore', params: { points: 60 }, cost: 4 },
+  { type: 'totalScore', params: { points: 80 }, cost: 5 },
   { type: 'totalScore', params: { points: 100 }, cost: 6 },
 
   // One named corner, all four available at each rung.
