@@ -277,6 +277,76 @@ export function renderObjectiveList(listEl, objectives) {
   });
 }
 
+/* ---------- Per-corner objective flags ---------- */
+
+// Built here rather than written out four times in markup, for the same
+// reason the splash's buttons are: one source for the art and the class
+// names. Every flag starts hidden — renderCornerObjectiveFlag shows only
+// the ones a deal actually bound to a corner. Returns them as a
+// corner-keyed Map, since the caller renders each one by name.
+const CORNER_FLAG_ICON =
+  '<svg class="corner-flag-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" ' +
+  'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M6 21V4"/><path d="M6 4.5h11l-2.6 4 2.6 4H6z" fill="currentColor" stroke="none"/></svg>';
+
+export function buildCornerFlags(containerEl, corners) {
+  containerEl.innerHTML = '';
+  const flags = new Map();
+  corners.forEach((corner) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'corner-flag';
+    btn.id = `corner-flag-${corner}`;
+    btn.dataset.corner = corner;
+    btn.hidden = true;
+    // Named by shape, like everywhere else a corner is spoken about.
+    btn.setAttribute('aria-label', `${cornerShapeLabel(corner)} corner objective`);
+    btn.innerHTML =
+      `${CORNER_FLAG_ICON}<span class="corner-flag-mark" aria-hidden="true"></span>` +
+      '<span class="corner-flag-badge"></span>';
+    containerEl.appendChild(btn);
+    flags.set(corner, btn);
+  });
+  return flags;
+}
+
+// One flag's whole state, from the objective bound to that corner — or
+// `null`, which hides it (an Endless game, or a corner this deal made no
+// demands of). The counter follows the objective list's convention: raw for
+// an `enduring` limit, clamped for a target.
+export function renderCornerObjectiveFlag(flagEl, objective) {
+  flagEl.hidden = !objective;
+  if (!objective) return;
+
+  const { status, current, goal, enduring } = objective;
+  flagEl.classList.toggle('complete', status === 'complete');
+  flagEl.classList.toggle('failed', status === 'failed');
+  flagEl.querySelector('.corner-flag-mark').textContent =
+    status === 'complete' ? '✓' : status === 'failed' ? '✗' : '';
+  flagEl.querySelector('.corner-flag-badge').textContent = enduring
+    ? `${current}/${goal}`
+    : `${Math.min(current, goal)}/${goal}`;
+}
+
+// Same "something actually moved" bump as the right-edge flag's.
+export function pulseCornerFlag(flagEl) {
+  if (flagEl.hidden) return;
+  flagEl.classList.remove('pulse');
+  void flagEl.offsetWidth; // force reflow so the animation restarts
+  flagEl.classList.add('pulse');
+}
+
+// The popover a corner flag opens. `corner` drives which edge the card and
+// its pointer sit on, entirely in CSS — nothing here measures the flag.
+export function showCornerPopover(popoverEl, corner) {
+  popoverEl.dataset.corner = corner;
+  popoverEl.hidden = false;
+}
+
+export function hideCornerPopover(popoverEl) {
+  popoverEl.hidden = true;
+}
+
 export function showObjectivePanel(panelEl) {
   panelEl.hidden = false;
 }

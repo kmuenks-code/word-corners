@@ -492,6 +492,36 @@ A time limit (`limits.seconds`) would additionally need a UI ticker calling
 `objectives.tick()`; otherwise the limit is only noticed when the next
 event arrives.
 
+### The corner flags
+A corner-scoped objective gets a **second home**: a small flag with a live
+counter, sitting in the center band just inside the tile it belongs to —
+below the north tiles, above the south ones — which taps open to a popover
+showing that one objective. The right-edge flag still owns the whole deal;
+this puts a corner's goal *at* the corner, where the decision about that
+corner is being made.
+
+- **`params.corner` is the only signal, again.** The same convention the
+  objective list's shape column uses, so a future corner-scoped type is
+  covered with no work here. The one-objective-per-corner rule is what
+  makes the flag-to-objective mapping 1:1 by construction — if that rule
+  ever goes, this UI needs an answer for two flags on one corner.
+- **They hug the outer screen edges.** The center row can be ~283px wide on
+  a 320px screen, so the edges are the only horizontal space reliably free;
+  the flags also clear the row vertically, in a strip that is ~38px tall on
+  that same phone. That is what caps `--corner-flag-height`, and why
+  `--north-band-top` / `--south-band-bottom` are shared variables — the
+  flags and `#center-stack` must be measured from the same line.
+- **Outside `.corner`, not inside it.** A tile sets `z-index: 1` and so is
+  its own stacking context: a child flag could never rise above
+  `#center-stack`, and a click inside a tile submits its word.
+- The popover **reuses `renderObjectiveList` with a single-item array**, so
+  a goal reads identically wherever the player meets it, and its backdrop
+  is doing two jobs — the dismiss affordance, and keeping that tap off the
+  board. It re-renders from every snapshot while open, so progress shows
+  without closing it.
+- A resolved objective's flag **stays**, going teal ✓ or rose ✗ while still
+  printing its counter: "1/3" beside a ✗ says how far it got.
+
 ### Recording objective results
 Every finished game stores one `game_objectives` row per objective dealt,
 so **the costs and budgets above can be tuned from data rather than

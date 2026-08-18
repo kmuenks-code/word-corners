@@ -41,6 +41,23 @@
     <span class="word"></span>
   </div>
 
+  <!-- One flag per corner that has an objective bound to it, built by
+       js/ui.js (buildCornerFlags) rather than written out four times here.
+       They sit in the center band just inside each tile — outside .corner
+       on purpose: a tile is its own stacking context, so a child flag could
+       never rise above #center-stack, and a click inside a tile would
+       submit its word. -->
+  <div id="corner-flags"></div>
+
+  <!-- What a corner flag opens: the same objective row the panel draws, for
+       that one corner, anchored beside the flag that was tapped. Dismissed
+       by a tap anywhere — there is nothing in it to interact with. -->
+  <div id="corner-popover" hidden>
+    <div id="corner-popover-card">
+      <ul id="corner-popover-list"></ul>
+    </div>
+  </div>
+
   <div id="center-stack">
     <div id="center-row">
       <div class="row-slot">

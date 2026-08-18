@@ -37,6 +37,19 @@
   --corner-width: calc((100% - 2 * var(--edge-gap) - var(--corner-gap)) / 2);
   --corner-radius: clamp(18px, 5vw, 30px);
 
+  /* Where the center band starts, measured from each edge — i.e. the inner
+     edge of the north tiles and of the south tiles. #center-stack spans
+     exactly this, and the corner flags hang off it, so the two can't drift
+     apart when the bands are retuned. */
+  --north-band-top: calc(var(--top-band) + env(safe-area-inset-top) + var(--corner-height));
+  --south-band-bottom: calc(var(--bottom-band) + env(safe-area-inset-bottom) + var(--corner-height));
+
+  /* The per-corner objective flags. Kept small deliberately: they live in
+     the strip between a tile and the center row, which is only ~37px tall
+     on a 320×568 phone, and they must never crowd the row. */
+  --corner-flag-height: clamp(22px, 5.4vw, 28px);
+  --corner-flag-gap: clamp(5px, 1.4vw, 9px);
+
   /* Shared sizing for the center-row bubbles, kept as variables so the
      undo button and the blank slot can match the preview bubble exactly,
      and so every column can shrink together on narrow phones instead of
@@ -363,8 +376,8 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(var(--top-band) + env(safe-area-inset-top) + var(--corner-height));
-  bottom: calc(var(--bottom-band) + env(safe-area-inset-bottom) + var(--corner-height));
+  top: var(--north-band-top);
+  bottom: var(--south-band-bottom);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -874,6 +887,231 @@ body.game-over #objective-flag {
   display: none;
 }
 
+/* ---------- Per-corner objective flags ---------- */
+
+/* A small flag beside every corner that has an objective bound to it —
+   below the north tiles, above the south ones — so the goal for a corner
+   is readable at the corner rather than only behind the right-edge flag.
+   Hugs the outer screen edge: the center row is centred and can be ~283px
+   wide on a 320px screen, so the edges are the only horizontal space that
+   is reliably free. It clears the row vertically too (the strip between a
+   tile and the row is ~37px on the tightest phone), which is what keeps
+   --corner-flag-height small.
+
+   The container is a pass-through layer: it must not swallow drags aimed
+   at the board behind it, so only the buttons take pointer events. */
+#corner-flags {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.corner-flag {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(3px, 1vw, 5px);
+  height: var(--corner-flag-height);
+  padding: 0 clamp(7px, 2.2vw, 10px);
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
+  box-shadow:
+    0 3px 0 -1px rgba(12, 58, 68, 0.18),
+    0 5px 10px var(--shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  color: var(--text);
+  font-family: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* The button's own `display: inline-flex` would otherwise beat the UA
+   stylesheet's [hidden] rule — same trap as .row-slot and #blank-picker. */
+.corner-flag[hidden] {
+  display: none;
+}
+
+#corner-flag-nw,
+#corner-flag-ne {
+  top: calc(var(--north-band-top) + var(--corner-flag-gap));
+}
+
+#corner-flag-sw,
+#corner-flag-se {
+  bottom: calc(var(--south-band-bottom) + var(--corner-flag-gap));
+}
+
+#corner-flag-nw,
+#corner-flag-sw {
+  left: calc(var(--edge-gap) + env(safe-area-inset-left));
+}
+
+#corner-flag-ne,
+#corner-flag-se {
+  right: calc(var(--edge-gap) + env(safe-area-inset-right));
+}
+
+.corner-flag-icon {
+  width: clamp(11px, 3.2vw, 14px);
+  height: clamp(11px, 3.2vw, 14px);
+}
+
+/* Swapped in for the flag glyph once the objective resolves, matching the
+   ✓/✗ the objective list uses. The counter stays either way — "1/3" next
+   to a ✗ says how far it got. */
+.corner-flag-mark {
+  display: none;
+  font-size: clamp(0.68rem, 2.6vw, 0.85rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.corner-flag.complete .corner-flag-icon,
+.corner-flag.failed .corner-flag-icon {
+  display: none;
+}
+
+.corner-flag.complete .corner-flag-mark,
+.corner-flag.failed .corner-flag-mark {
+  display: block;
+}
+
+.corner-flag-badge {
+  font-size: clamp(0.58rem, 2.2vw, 0.7rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.corner-flag:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 -1px rgba(12, 58, 68, 0.18),
+    0 2px 5px var(--shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Done: teal, like the right-edge flag's all-complete state. */
+.corner-flag.complete {
+  background: radial-gradient(circle at 30% 22%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
+  color: var(--text-light);
+}
+
+/* Failed: the closed tile's dusty rose, already the board's "this corner is
+   done for" color. */
+.corner-flag.failed {
+  background: linear-gradient(160deg, #F0CFCC 0%, var(--corner-closed) 52%, var(--corner-closed-deep) 100%);
+  color: #7A3B3B;
+}
+
+/* Same "real progress happened" signal as the right-edge flag's bump, but
+   keyed to this corner alone — and without the translateY that one has to
+   preserve, since these aren't centred by transform. */
+.corner-flag.pulse {
+  animation: corner-flag-bump 0.42s ease;
+}
+
+@keyframes corner-flag-bump {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* The game-over card lists every objective's final state, so the flags
+   would only repeat it over the overlay's backdrop. */
+body.game-over #corner-flags {
+  display: none;
+}
+
+/* ---------- Corner objective popover ---------- */
+
+/* What a corner flag opens. Below the blank picker (50) and the objective
+   panel (55) but above the board and the flags themselves. The backdrop is
+   the dismiss affordance and also blocks play while it's open, so a tap
+   meant for the popover can never land on a corner and submit a word. */
+#corner-popover {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  background: rgba(12, 58, 68, 0.3);
+}
+
+#corner-popover[hidden] {
+  display: none;
+}
+
+/* Anchored to the flag that opened it: on the same edge, immediately inside
+   it. It reaches across the center row, which is fine — the backdrop has
+   already taken the board out of play. */
+#corner-popover-card {
+  position: absolute;
+  width: min(78%, 272px);
+  padding: 15px 17px;
+  background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
+  border-radius: 18px;
+  box-shadow:
+    0 6px 0 -1px rgba(12, 58, 68, 0.14),
+    0 14px 26px var(--shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
+}
+
+#corner-popover[data-corner="nw"] #corner-popover-card,
+#corner-popover[data-corner="ne"] #corner-popover-card {
+  top: calc(var(--north-band-top) + var(--corner-flag-gap) + var(--corner-flag-height) + 9px);
+}
+
+#corner-popover[data-corner="sw"] #corner-popover-card,
+#corner-popover[data-corner="se"] #corner-popover-card {
+  bottom: calc(var(--south-band-bottom) + var(--corner-flag-gap) + var(--corner-flag-height) + 9px);
+}
+
+#corner-popover[data-corner="nw"] #corner-popover-card,
+#corner-popover[data-corner="sw"] #corner-popover-card {
+  left: calc(var(--edge-gap) + env(safe-area-inset-left));
+}
+
+#corner-popover[data-corner="ne"] #corner-popover-card,
+#corner-popover[data-corner="se"] #corner-popover-card {
+  right: calc(var(--edge-gap) + env(safe-area-inset-right));
+}
+
+/* A rotated square poking out of the card's edge toward the flag, so the
+   card reads as belonging to that corner rather than floating mid-board.
+   Each face takes the card's color at that end of its gradient. */
+#corner-popover-card::before {
+  content: "";
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  border-radius: 3px;
+}
+
+#corner-popover[data-corner="nw"] #corner-popover-card::before,
+#corner-popover[data-corner="ne"] #corner-popover-card::before {
+  top: -5px;
+  background: #FDFBF2;
+}
+
+#corner-popover[data-corner="sw"] #corner-popover-card::before,
+#corner-popover[data-corner="se"] #corner-popover-card::before {
+  bottom: -5px;
+  background: var(--corner-bg-deep);
+}
+
+#corner-popover[data-corner="nw"] #corner-popover-card::before,
+#corner-popover[data-corner="sw"] #corner-popover-card::before {
+  left: 20px;
+}
+
+#corner-popover[data-corner="ne"] #corner-popover-card::before,
+#corner-popover[data-corner="se"] #corner-popover-card::before {
+  right: 20px;
+}
+
 /* ---------- Objective panel ---------- */
 
 /* Informational, so unlike #blank-picker it dismisses — backdrop click and
@@ -935,9 +1173,10 @@ body.game-over #objective-flag {
   cursor: pointer;
 }
 
-/* ---------- Objective rows (shared: panel + game-over summary) ---------- */
+/* ---------- Objective rows (shared: panel + popover + game-over) ---------- */
 
 #objective-list,
+#corner-popover-list,
 #game-over-objectives {
   display: flex;
   flex-direction: column;

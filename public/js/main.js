@@ -55,6 +55,11 @@ import {
   renderSplashStep,
   renderObjectiveFlag,
   pulseObjectiveFlag,
+  buildCornerFlags,
+  renderCornerObjectiveFlag,
+  pulseCornerFlag,
+  showCornerPopover,
+  hideCornerPopover,
   renderObjectiveList,
   showObjectivePanel,
   hideObjectivePanel,
@@ -82,6 +87,12 @@ let pendingModeId = null;
 // to tell "an objective actually advanced" from the far more frequent "some
 // event arrived", so the flag only bumps when there's something to notice.
 let lastObjectiveSignature = '';
+// The same idea per corner flag, so one corner's progress bumps only its
+// own flag. Keyed by corner; a missing entry means "first render".
+let lastCornerSignatures = {};
+// Which corner's flag popover is open, or null. Also what keeps that
+// popover's contents current as its objective advances.
+let openFlagCorner = null;
 // Single-level undo: records enough to reverse the most recent drop.
 // Cleared whenever a word is submitted, since that's a checkpoint.
 // { type: 'choice', index, corner, closedNow, prevChoiceLetter, prevNextLetter }
@@ -143,9 +154,19 @@ const objectiveFlagBadgeEl = document.getElementById('objective-flag-badge');
 const objectivePanelEl = document.getElementById('objective-panel');
 const objectiveListEl = document.getElementById('objective-list');
 const objectivePanelCloseBtn = document.getElementById('objective-panel-close');
+const cornerFlagsEl = document.getElementById('corner-flags');
+const cornerPopoverEl = document.getElementById('corner-popover');
+const cornerPopoverListEl = document.getElementById('corner-popover-list');
 const hintBarEl = document.getElementById('hint-bar');
 const howToPlayEl = document.getElementById('how-to-play');
 const howToPlayCloseBtn = document.getElementById('how-to-play-close');
+
+// Built once from the corners already in the markup, so a fifth tile would
+// get its flag with no change here.
+const cornerFlagEls = buildCornerFlags(
+  cornerFlagsEl,
+  cornerEls.map((el) => el.dataset.corner)
+);
 
 function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
@@ -210,6 +231,37 @@ function renderObjectiveState(view = objectives.snapshot()) {
   });
   renderObjectiveList(objectiveListEl, list);
 
+  // A corner-scoped objective gets a second home, on a flag beside the tile
+  // it belongs to. `params.corner` is the only signal that an objective is
+  // corner-scoped — the same convention the objective list's shape column
+  // uses — and the selector deals at most one objective per corner, so this
+  // lookup is one-to-one by construction (see "One objective per corner").
+  const byCorner = new Map();
+  list.forEach((objective) => {
+    const corner = objective.params?.corner;
+    if (corner) byCorner.set(corner, objective);
+  });
+  cornerFlagEls.forEach((flagEl, corner) => {
+    const objective = byCorner.get(corner) ?? null;
+    renderCornerObjectiveFlag(flagEl, objective);
+    const signature = objective ? `${objective.current}:${objective.status}` : '';
+    if (signature !== lastCornerSignatures[corner]) {
+      // An absent previous signature is this game's first render, which is
+      // no more progress than the whole-board flag's first render is.
+      if (lastCornerSignatures[corner]) pulseCornerFlag(flagEl);
+      lastCornerSignatures[corner] = signature;
+    }
+  });
+
+  // An open popover tracks its objective live, so progress shows without
+  // closing and reopening it. If that objective is gone — a new deal — the
+  // popover has nothing left to show.
+  if (openFlagCorner) {
+    const objective = byCorner.get(openFlagCorner);
+    if (objective) renderObjectiveList(cornerPopoverListEl, [objective]);
+    else closeCornerPopover();
+  }
+
   // The runtime notifies on every event, but most events move nothing an
   // objective cares about. Bumping the flag only when this signature
   // changes keeps it meaningful — it fires on real progress, not on every
@@ -220,6 +272,29 @@ function renderObjectiveState(view = objectives.snapshot()) {
     if (lastObjectiveSignature !== '') pulseObjectiveFlag(objectiveFlagEl);
     lastObjectiveSignature = signature;
   }
+}
+
+// Tapping a corner flag opens that one objective beside it; tapping again
+// (or anywhere else) closes it. Like the flag panel it reads only from a
+// snapshot, and it renders through the same list renderer, so a corner's
+// goal reads identically wherever the player meets it.
+function toggleCornerPopover(corner) {
+  if (openFlagCorner === corner) {
+    closeCornerPopover();
+    return;
+  }
+  const objective = objectives
+    .snapshot()
+    .objectives.find((o) => o.params?.corner === corner);
+  if (!objective) return;
+  openFlagCorner = corner;
+  renderObjectiveList(cornerPopoverListEl, [objective]);
+  showCornerPopover(cornerPopoverEl, corner);
+}
+
+function closeCornerPopover() {
+  openFlagCorner = null;
+  hideCornerPopover(cornerPopoverEl);
 }
 
 // ---------- Splash ----------
@@ -261,6 +336,7 @@ function handleDifficultyChosen(difficulty) {
 function returnToSplash() {
   hideGameOver(document.body);
   hideObjectivePanel(objectivePanelEl);
+  closeCornerPopover();
   showModeStep();
   showSplash(splashEl);
 }
@@ -275,6 +351,9 @@ function endGame() {
   // Covers the objective-mode ending too, where the game is over with
   // corners still open and nothing else would have set this.
   setGameOver(state);
+  // The flags hide with the rest of the board furniture; a popover left
+  // open would sit over the game-over card saying what it already says.
+  closeCornerPopover();
   // Both are idempotent, so a second endGame() call can't double-count.
   // finish() resolves the mode's verdict and returns the final snapshot:
   // enduring objectives that never failed become complete, unfinished
@@ -516,13 +595,15 @@ function startGame(mode) {
   gameRecorded = false;
   pendingModeId = null;
   // Cleared before reset so the first render of the new set can't be
-  // mistaken for progress and pulse the flag.
+  // mistaken for progress and pulse the flags.
   lastObjectiveSignature = '';
+  lastCornerSignatures = {};
   objectives.reset(mode);
   renderUndoAvailability(undoBtn, false);
   hideGameOver(document.body);
   hideBlankPicker(blankPickerEl);
   hideObjectivePanel(objectivePanelEl);
+  closeCornerPopover();
   hideHowToPlay(howToPlayEl);
   renderBlankState();
   renderScore(scoreEl, state.score);
@@ -591,6 +672,15 @@ async function start() {
   howToPlayEl.addEventListener('click', (e) => {
     if (e.target === howToPlayEl) hideHowToPlay(howToPlayEl);
   });
+
+  // One delegated listener for all four corner flags, since ui.js builds
+  // them. The popover closes on any tap inside it — there's nothing in it
+  // to interact with, and its backdrop is what keeps that tap off the board.
+  cornerFlagsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.corner-flag');
+    if (btn) toggleCornerPopover(btn.dataset.corner);
+  });
+  cornerPopoverEl.addEventListener('click', closeCornerPopover);
 
   objectiveFlagEl.addEventListener('click', () => showObjectivePanel(objectivePanelEl));
   objectivePanelCloseBtn.addEventListener('click', () => hideObjectivePanel(objectivePanelEl));
