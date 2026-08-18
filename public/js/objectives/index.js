@@ -16,8 +16,6 @@ export {
   createMode,
   getGameMode,
   listGameModes,
-  dealSizeRangeFor,
-  budgetFor,
   selectWithinBudget,
   feasibleDealSizes,
 } from './modes.js';

@@ -114,6 +114,7 @@ let gameRecorded = false;
 const cornerEls = Array.from(document.querySelectorAll('.corner'));
 const scoreEl = document.getElementById('score-value');
 const finalScoreEl = document.getElementById('final-score');
+const finalScoreRowEl = document.getElementById('final-score-row');
 const newGameBtn = document.getElementById('new-game-btn');
 const undoBtn = document.getElementById('undo-btn');
 const previewLetterEl = document.getElementById('preview-letter');
@@ -293,6 +294,11 @@ function endGame() {
   renderObjectiveState();
 
   renderGameOver(document.body, finalScoreEl, state.score);
+  // Score isn't ranked in Objective mode (see "Recording objective
+  // results" in CLAUDE.md), and it's not a meaningful summary either — the
+  // objective list above already says how the game went, so the row is
+  // hidden rather than shown alongside it.
+  finalScoreRowEl.hidden = final.mode.id !== 'endless';
   renderBests();
 
   if (gameRecorded) return;

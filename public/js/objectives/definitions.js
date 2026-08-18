@@ -92,6 +92,32 @@ const words = counting({
   matches: (event) => event.type === GameEvent.WORD_SCORED,
 });
 
+// Words whose first letter is a vowel. Deliberately its own small set here
+// rather than importing isVowel() from js/letterSource.js: that one exists to
+// balance the letter *draw*, and a definition that reaches outside this
+// directory stops being a pure function over (progress, event, params). Y is
+// not a vowel for either purpose, so the two agree today and are free to
+// diverge if the draw ever needs them to.
+const INITIAL_VOWELS = new Set(['A', 'E', 'I', 'O', 'U']);
+
+// Only the first letter matters, and a blank-derived letter counts the same
+// as a drawn one — the event carries the finished word, not where its
+// letters came from.
+function startsWithVowel(word) {
+  return typeof word === 'string' && INITIAL_VOWELS.has(word.charAt(0).toUpperCase());
+}
+
+// Vowel-initial words. Pulls against the natural shape of a corner: the
+// player picks which corner a letter opens, so this is really "spend early
+// letters on vowels", paid for later when the corner needs consonants.
+const wordsStartingWithVowel = counting({
+  id: 'wordsStartingWithVowel',
+  label: 'Words starting with a vowel',
+  defaults: { count: 6 },
+  describe: (p) => `Score ${plural(p.count, 'word')} starting with a vowel`,
+  matches: (event) => event.type === GameEvent.WORD_SCORED && startsWithVowel(event.word),
+});
+
 // Points rather than words, so it rewards long words instead of many.
 // Scoring is superlinear (n*(n-1)/2 — a 3-letter word is 3 points, a
 // 6-letter word is 15), which is why the pool's high tunings climb steeply.
@@ -157,7 +183,10 @@ const cornerOnlyLength = Object.freeze({
 // Score fewer than `limit` words in `corner`, total, any length — 0 is a
 // pass. `enduring`, so unlike cornerOnlyLength it never resolves COMPLETE
 // early: it only finalizes at game end (finalizeObjectives, runtime.js),
-// same as any other enduring objective that survived without failing.
+// same as any other enduring objective that survived without failing. It
+// does not, however, hold the *game* open — once every target objective is
+// complete, standardEvaluate (modes.js) wins the game with a kept limit
+// still ACTIVE, and finish() resolves it COMPLETE a moment later.
 // `goal` reads as the ceiling `limit` names, not a target to reach.
 const cornerWordLimitCounter = counting({
   id: 'cornerWordLimit',
@@ -176,6 +205,7 @@ const cornerWordLimit = Object.freeze({
 const DEFINITIONS = [
   wordsOfLength,
   words,
+  wordsStartingWithVowel,
   totalScore,
   wordsInCorner,
   cornerOnlyLength,

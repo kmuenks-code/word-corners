@@ -1,7 +1,7 @@
 {
   "name": "word-corners",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Mobile-friendly word game. The game itself has no build step and no runtime dependencies — wrangler is here only to run and deploy the Cloudflare Worker + D1 backend.",
   "scripts": {
     "dev": "wrangler dev --env staging",

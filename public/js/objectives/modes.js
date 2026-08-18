@@ -49,10 +49,28 @@ function standardEvaluate(mode, view) {
     return { status: ModeOutcome.LOST, reason: 'objectiveFailed' };
   }
 
-  // Note an enduring objective never reports COMPLETE mid-game, so a set
-  // containing one can't be cleared early — you have to see the game out.
+  // An enduring objective is a limit, not a target: it never reports
+  // COMPLETE mid-game, only at game end via finalizeObjectives. So "every
+  // objective COMPLETE" would never be true for a set containing one, and
+  // a deal of three targets plus one limit could only ever be won by
+  // playing the board all the way closed — with the limit live the whole
+  // time, so playing on can only lose a game that is already won.
+  //
+  // The win condition is therefore "nothing left to do": every *target* is
+  // complete, and no objective — target or limit — has failed. A limit
+  // that is currently being kept is being kept; stopping here is exactly
+  // what finalizeObjectives would resolve it as anyway.
+  //
+  // `targets.length > 0` is what stops a hypothetical all-limits deal from
+  // being won on move zero for doing nothing. Such a deal can't be dealt
+  // today (one row per type, and the one enduring type's rungs cost less
+  // than any budget), and if one ever can be, it plays to the normal
+  // all-corners-closed ending instead of resolving instantly.
+  const targets = objectives.filter((o) => !o.enduring);
   const allComplete =
-    objectives.length > 0 && objectives.every((o) => o.status === ObjectiveStatus.COMPLETE);
+    targets.length > 0 &&
+    targets.every((o) => o.status === ObjectiveStatus.COMPLETE) &&
+    objectives.every((o) => o.status !== ObjectiveStatus.FAILED);
   if (mode.endOnComplete && allComplete) {
     return { status: ModeOutcome.WON, reason: 'objectivesComplete' };
   }
@@ -178,10 +196,10 @@ export const OBJECTIVE_POOL = Object.freeze([
   { type: 'wordsOfLength', params: { length: 3, exact: true, count: 13 }, cost: 3 },
   { type: 'wordsOfLength', params: { length: 3, exact: true, count: 18 }, cost: 4 },
   { type: 'wordsOfLength', params: { length: 3, exact: true, count: 25 }, cost: 6 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 3 }, cost: 1 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 6 }, cost: 2 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 10 }, cost: 3 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 14 }, cost: 4 },
+  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 2 }, cost: 1 },
+  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 4 }, cost: 2 },
+  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 6 }, cost: 4 },
+  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 8 }, cost: 5 },
   { type: 'wordsOfLength', params: { length: 5, exact: false, count: 2 }, cost: 4 },
   { type: 'wordsOfLength', params: { length: 5, exact: false, count: 4 }, cost: 5 },
   { type: 'wordsOfLength', params: { length: 5, exact: false, count: 7 }, cost: 8 },
@@ -194,6 +212,18 @@ export const OBJECTIVE_POOL = Object.freeze([
   { type: 'words', params: { count: 18 }, cost: 3 },
   { type: 'words', params: { count: 24 }, cost: 4 },
   { type: 'words', params: { count: 32 }, cost: 6 },
+
+  // Words that begin with a vowel. Roughly a third of the draw is vowels
+  // (CATEGORY_WEIGHTS in letterSource.js) and a vowel is only useful as an
+  // opener if the corner is empty when it arrives, so these counts sit well
+  // below the equivalent `words` rungs at the same cost. No 1-cost rung: the
+  // cheapest ask here is already three words that had to start a corner a
+  // particular way. Other types carry the pool's 1-cost rows, so a remainder
+  // is still always fillable — same arrangement as cornerOnlyLength.
+  { type: 'wordsStartingWithVowel', params: { count: 3 }, cost: 2 },
+  { type: 'wordsStartingWithVowel', params: { count: 6 }, cost: 4 },
+  { type: 'wordsStartingWithVowel', params: { count: 9 }, cost: 6 },
+  { type: 'wordsStartingWithVowel', params: { count: 12 }, cost: 8 },
 
   // Points. Climbs steeply because word scoring is superlinear.
   { type: 'totalScore', params: { points: 20 }, cost: 1 },
@@ -394,27 +424,6 @@ export function listGameModes() {
     blurb: mode.blurb ?? '',
     usesDifficulty: mode.usesDifficulty === true,
   }));
-}
-
-// How many objectives `id` can deal at `difficulty`, as { min, max }. The
-// count is no longer fixed by the tier, so a difficulty picker has to show
-// a range (or nothing) rather than a number.
-export function dealSizeRangeFor(id, difficulty) {
-  const mode = getGameMode(id);
-  if (!mode) return { min: 0, max: 0 };
-  if (!mode.pool) {
-    const n = mode.objectives?.length ?? 0;
-    return { min: n, max: n };
-  }
-  const budget = mode.budgets?.[assertDifficulty(difficulty)] ?? 0;
-  const sizes = feasibleDealSizes(mode.pool, budget);
-  return sizes.length === 0
-    ? { min: 0, max: 0 }
-    : { min: Math.min(...sizes), max: Math.max(...sizes) };
-}
-
-export function budgetFor(id, difficulty) {
-  return getGameMode(id)?.budgets?.[assertDifficulty(difficulty)] ?? 0;
 }
 
 // Compiles one row of GAME_MODES into a live mode at the chosen difficulty.
