@@ -185,28 +185,29 @@ export const OBJECTIVE_POOL = Object.freeze([
   { type: 'wordsOfLength', params: { length: 5, exact: false, count: 2 }, cost: 2 },
   { type: 'wordsOfLength', params: { length: 5, exact: false, count: 4 }, cost: 3 },
   { type: 'wordsOfLength', params: { length: 5, exact: false, count: 7 }, cost: 4 },
-  { type: 'wordsOfLength', params: { length: 6, exact: false, count: 3 }, cost: 6 },
+  { type: 'wordsOfLength', params: { length: 6, exact: false, count: 2 }, cost: 6 },
+  { type: 'wordsOfLength', params: { length: 7, exact: true, count: 1 }, cost: 6 },
 
   // Total words cleared, any length.
-  { type: 'words', params: { count: 5 }, cost: 1 },
-  { type: 'words', params: { count: 9 }, cost: 2 },
-  { type: 'words', params: { count: 13 }, cost: 3 },
-  { type: 'words', params: { count: 17 }, cost: 4 },
-  { type: 'words', params: { count: 24 }, cost: 6 },
+  { type: 'words', params: { count: 6 }, cost: 1 },
+  { type: 'words', params: { count: 12 }, cost: 2 },
+  { type: 'words', params: { count: 18 }, cost: 3 },
+  { type: 'words', params: { count: 24 }, cost: 4 },
+  { type: 'words', params: { count: 32 }, cost: 6 },
 
   // Points. Climbs steeply because word scoring is superlinear.
-  { type: 'totalScore', params: { points: 40 }, cost: 1 },
-  { type: 'totalScore', params: { points: 75 }, cost: 2 },
-  { type: 'totalScore', params: { points: 115 }, cost: 3 },
-  { type: 'totalScore', params: { points: 160 }, cost: 4 },
-  { type: 'totalScore', params: { points: 230 }, cost: 6 },
+  { type: 'totalScore', params: { points: 25 }, cost: 1 },
+  { type: 'totalScore', params: { points: 40 }, cost: 2 },
+  { type: 'totalScore', params: { points: 75 }, cost: 3 },
+  { type: 'totalScore', params: { points: 100 }, cost: 4 },
+  { type: 'totalScore', params: { points: 120 }, cost: 6 },
 
   // One named corner, all four available at each rung.
-  ...perCorner(2, 1),
-  ...perCorner(3, 2),
-  ...perCorner(5, 3),
-  ...perCorner(6, 4),
-  ...perCorner(8, 6),
+  ...perCorner(3, 1),
+  ...perCorner(5, 2),
+  ...perCorner(7, 3),
+  ...perCorner(9, 4),
+  ...perCorner(11, 6),
 
   // Restrictive: only this exact length may ever be scored in the named
   // corner, and landing one is the whole objective (see cornerOnlyLength
@@ -221,8 +222,8 @@ export const OBJECTIVE_POOL = Object.freeze([
   // rows, which is all `selectWithinBudget` needs to fill a remainder —
   // see the "1-cost rung for every type" note in CLAUDE.md, which is
   // about *this type's own* reachability, not a hard requirement.)
-  ...perCornerOnlyLength(5, 3),
-  ...perCornerOnlyLength(6, 4),
+  ...perCornerOnlyLength(5, 4),
+  ...perCornerOnlyLength(6, 6),
 
   // Restrictive: the named corner must never reach `limit` words, total —
   // 0 is a pass (see cornerWordLimit in definitions.js). Priced lighter
@@ -252,27 +253,69 @@ function shuffled(items, random) {
   return copy;
 }
 
+// What a row claims exclusively, so no deal can contain two rows claiming
+// the same thing.
+//
+// A row always claims its type — rows sharing one are alternative tunings,
+// and "score 8 three-letter words" alongside "score 18" of them is just a
+// milestone of the bigger one. A corner-scoped row *additionally* claims its
+// corner, because the three corner types make demands of one corner that
+// don't survive being combined: "clear 5 words here" and "score fewer than 2
+// words here" are each reasonable and jointly unwinnable, and "land one
+// 6-letter word here and nothing else" is winnable beside "clear 5 words
+// here" only if the 6-letter word happens to land first — a rule the player
+// is never shown. Rather than enumerate which pairs conflict (a table that
+// grows with every type added, and that someone has to remember to extend),
+// the corner is treated as the scarce thing, exactly as the type already is.
+//
+// Note no objective type declares itself corner-scoped: carrying a `corner`
+// param *is* the signal, the same convention renderObjectiveList (ui.js)
+// uses to decide whether to draw a shape. A future corner type therefore
+// gets this for free.
+function exclusionKeys(row) {
+  const keys = [`type:${row.type}`];
+  if (row.params?.corner) keys.push(`corner:${row.params.corner}`);
+  return keys;
+}
+
 // Exhaustive depth-first search for a set of rows that spends `remaining`
-// *exactly*, taking at most one row per type and exactly `need` rows in
-// total. Returns null only when no such set exists — every affordable row
-// is tried at each type, plus the branch that skips the type — so a null
-// is proof of infeasibility rather than an unlucky roll.
+// *exactly*, claiming each exclusion key at most once and taking exactly
+// `need` rows in total. Returns null only when no such set exists — every
+// affordable row is tried at each type, plus the branch that skips the type
+// — so a null is proof of infeasibility rather than an unlucky roll.
 //
 // Fixing `need` up front is what keeps deal sizes varied. Searching without
 // it biases hard toward using every type (the "take a row" branches vastly
 // outnumber the single "skip" branch), which would make an Easy game four
 // 1-cost objectives almost every time instead of sometimes one 4-cost one.
-function findCombination(types, index, remaining, need, byType, random) {
+//
+// `used` is mutated and restored around each branch rather than copied. That
+// is safe only because a row whose key is already claimed is filtered out
+// before the branch is taken, so every key this frame adds is one it owns.
+function findCombination(types, index, remaining, need, byType, random, used = new Set()) {
   if (need === 0) return remaining === 0 ? [] : null;
   if (index >= types.length) return null;
   if (types.length - index < need) return null; // not enough types left
 
-  const affordable = byType.get(types[index]).filter((row) => row.cost <= remaining);
+  const affordable = byType
+    .get(types[index])
+    .filter((row) => row.cost <= remaining && !exclusionKeys(row).some((key) => used.has(key)));
   for (const row of shuffled(affordable, random)) {
-    const rest = findCombination(types, index + 1, remaining - row.cost, need - 1, byType, random);
+    const keys = exclusionKeys(row);
+    keys.forEach((key) => used.add(key));
+    const rest = findCombination(
+      types,
+      index + 1,
+      remaining - row.cost,
+      need - 1,
+      byType,
+      random,
+      used
+    );
+    keys.forEach((key) => used.delete(key));
     if (rest) return [row, ...rest];
   }
-  return findCombination(types, index + 1, remaining, need, byType, random);
+  return findCombination(types, index + 1, remaining, need, byType, random, used);
 }
 
 // Which deal sizes a budget can be spent on exactly. Deterministic — the
@@ -429,13 +472,20 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
 // it should surface at startup naming the tier rather than at the moment a
 // player picks that difficulty and the deal comes back empty.
 (function validatePool() {
+  // A corner-scoped objective's description no longer names its corner —
+  // the UI shows that as a shape (see js/cornerSymbols.js) — so the four
+  // per-corner variants of a rung describe identically. An error message
+  // has to say which row it means, hence the corner key spliced back in.
+  const rowLabel = (row) =>
+    row.params?.corner ? `${describeSpec(row)} [${row.params.corner}]` : describeSpec(row);
+
   GAME_MODES.filter((mode) => mode.pool).forEach((mode) => {
     // Every row must name a real definition and carry a usable cost.
     mode.pool.forEach((row) => {
       describeSpec(row); // throws on an unknown type or bad params
       if (!Number.isInteger(row.cost) || row.cost < 1) {
         throw new Error(
-          `Objective pool row "${describeSpec(row)}" has an invalid cost ${row.cost}; ` +
+          `Objective pool row "${rowLabel(row)}" has an invalid cost ${row.cost}; ` +
             'costs must be positive integers.'
         );
       }

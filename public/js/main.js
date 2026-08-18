@@ -24,7 +24,6 @@ import {
   createMode,
   listGameModes,
   listDifficulties,
-  dealSizeRangeFor,
 } from './objectives/index.js';
 import { submitGame, fetchHighScores } from './api.js';
 import { isProduction } from './env.js';
@@ -34,6 +33,7 @@ import { scoreWord } from './scoring.js';
 import { initDrag } from './input.js';
 import {
   renderCorner,
+  renderCornerSymbol,
   renderLetter,
   renderScore,
   flashInvalid,
@@ -235,14 +235,7 @@ function showModeStep() {
 // as a target rather than a difficulty.
 function showDifficultyStep(modeId) {
   pendingModeId = modeId;
-  renderDifficultyOptions(
-    splashDifficultyOptionsEl,
-    listDifficulties().map((tier) => {
-      const { min, max } = dealSizeRangeFor(modeId, tier.id);
-      const range = min === max ? `${min}` : `${min}–${max}`;
-      return { ...tier, note: `${range} goal${max === 1 ? '' : 's'}` };
-    })
-  );
+  renderDifficultyOptions(splashDifficultyOptionsEl, listDifficulties());
   renderSplashStep(splashModesEl, splashDifficultyEl, 'difficulty');
 }
 
@@ -538,6 +531,10 @@ async function start() {
   // a preview URL — says so in the top bar, so a test session can't be
   // mistaken for the real game (or vice versa).
   renderEnvBadge(envBadgeEl, isProduction() ? null : 'Test');
+
+  // The corners' shape badges: fixed for the life of the page, so they're
+  // drawn once here rather than re-rendered per turn or per game.
+  cornerEls.forEach((cornerEl) => renderCornerSymbol(cornerEl, cornerEl.dataset.corner));
 
   choiceLetterEls.forEach((el) => renderLetter(el, '…')); // loading indicator
   renderLetter(previewLetterEl, '…');

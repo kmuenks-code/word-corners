@@ -30,11 +30,12 @@
 
 import { GameEvent } from './events.js';
 
-const CORNER_LABELS = { nw: 'NW', ne: 'NE', sw: 'SW', se: 'SE' };
-
-function cornerLabel(corner) {
-  return CORNER_LABELS[corner] ?? String(corner).toUpperCase();
-}
+// A corner-scoped objective's description deliberately does NOT name its
+// corner. The corner is shown as its shape (see js/cornerSymbols.js), in a
+// leading column the renderer fills from `params.corner` — "◆  Clear 5
+// words" rather than "Clear 5 words in the SE corner". So these strings
+// describe only the task, and read as if the shape were their subject.
+// Nothing here knows what the shapes are; that stays in the UI layer.
 
 function plural(count, noun) {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
@@ -110,7 +111,7 @@ const wordsInCorner = counting({
   id: 'wordsInCorner',
   label: 'Words in one corner',
   defaults: { count: 3, corner: 'nw' },
-  describe: (p) => `Clear ${plural(p.count, 'word')} in the ${cornerLabel(p.corner)} corner`,
+  describe: (p) => `Clear ${plural(p.count, 'word')} here`,
   matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
 });
 
@@ -142,7 +143,7 @@ const cornerOnlyLength = Object.freeze({
   label: 'Only one word length in a corner',
   defaults: { corner: 'nw', length: 6, count: 1 },
   describe: (p) =>
-    `Land ${plural(p.count, `${p.length}-letter word`)} in the ${cornerLabel(p.corner)} corner — nothing else there`,
+    `Land ${plural(p.count, `${p.length}-letter word`)} here — and nothing else`,
   goal: (p) => p.count,
   initial: () => ({ count: 0, violated: false }),
   advance: (progress, event, params) => {
@@ -163,7 +164,7 @@ const cornerWordLimitCounter = counting({
   id: 'cornerWordLimit',
   label: 'Word cap in one corner',
   defaults: { corner: 'nw', limit: 3 },
-  describe: (p) => `Score fewer than ${plural(p.limit, 'word')} in the ${cornerLabel(p.corner)} corner`,
+  describe: (p) => `Score fewer than ${plural(p.limit, 'word')} here`,
   goal: (p) => p.limit,
   matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
 });

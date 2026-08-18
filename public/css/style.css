@@ -246,6 +246,37 @@ body {
   right: calc(var(--edge-gap) + env(safe-area-inset-right));
 }
 
+/* The corner's identity badge (square / circle / triangle / diamond — see
+   js/cornerSymbols.js), sitting in the tile's *outer* corner, the one
+   nearest the screen edge. Deliberately quiet: dimmed tile ink, no fill of
+   its own, out of the way of the word it sits behind. It's a label the
+   objective list can point at, not decoration. `position: absolute` takes
+   it out of .corner's centered flex column so it never nudges the word. */
+.corner-mark {
+  position: absolute;
+  width: clamp(14px, 4vw, 20px);
+  height: clamp(14px, 4vw, 20px);
+  color: rgba(23, 78, 89, 0.34);
+  pointer-events: none;
+}
+
+.corner-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#corner-nw .corner-mark { top: 9px; left: 9px; }
+#corner-ne .corner-mark { top: 9px; right: 9px; }
+#corner-sw .corner-mark { bottom: 9px; left: 9px; }
+#corner-se .corner-mark { bottom: 9px; right: 9px; }
+
+/* A closed tile's ink goes dusty rose, so the badge follows it rather than
+   staying the teal that no longer matches anything around it. */
+.corner.closed .corner-mark {
+  color: rgba(122, 59, 59, 0.34);
+}
+
 .corner.drop-target {
   background: linear-gradient(160deg, #F0FBF9 0%, var(--corner-active) 52%, var(--corner-active-deep) 100%);
   transform: translateY(-3px);
@@ -1056,11 +1087,38 @@ body.game-over #objective-flag {
   display: none;
 }
 
+/* status mark / corner symbol / description+meter / progress. The symbol
+   column is a fixed width and is emitted even for objectives that name no
+   corner, so every description starts at the same x whether or not it has
+   a shape in front of it. */
 .objective-row {
   display: grid;
-  grid-template-columns: 18px 1fr auto;
+  grid-template-columns: 18px 17px 1fr auto;
   align-items: center;
   gap: 9px;
+}
+
+/* Matches the badge on the tile in shape but not in weight — on a cream
+   card at this size the tile's near-transparent ink disappears, so it sits
+   darker here while still reading as secondary to the description. */
+.objective-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  color: rgba(23, 78, 89, 0.72);
+}
+
+.objective-symbol svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Fades with the description it belongs to. */
+.objective-row.complete .objective-symbol {
+  opacity: 0.5;
 }
 
 .objective-status {
@@ -1247,11 +1305,10 @@ body.game-over #objective-flag {
 }
 
 /* Difficulty tiers read as a ladder, so they get the lighter cream
-   treatment and let the gold "N objectives" note carry the weight. */
+   treatment. */
 .difficulty-btn {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: baseline;
+  justify-content: center;
+  align-items: center;
   padding: 11px 18px;
   background: linear-gradient(165deg, #FFFDF6 0%, var(--corner-bg) 60%, var(--corner-bg-deep) 100%);
   box-shadow:
@@ -1263,13 +1320,6 @@ body.game-over #objective-flag {
 
 .difficulty-btn .splash-btn-name {
   font-size: 0.98rem;
-}
-
-.difficulty-btn .splash-btn-note {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--accent);
-  opacity: 1;
 }
 
 #splash-back {

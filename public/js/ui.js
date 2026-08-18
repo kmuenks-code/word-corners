@@ -1,5 +1,19 @@
 // All DOM reads/writes live here. Pure rendering functions; no game logic.
 
+import { createCornerSymbol, cornerShapeLabel } from './cornerSymbols.js';
+
+// Draws the corner's shape badge into its `.corner-mark` slot. Called once
+// per corner at startup — the badge never changes, so nothing re-renders
+// it. Purely an identity marker, so it's aria-hidden: the shape is how the
+// objective list names this corner, not information in itself.
+export function renderCornerSymbol(cornerEl, corner) {
+  const markEl = cornerEl.querySelector('.corner-mark');
+  if (!markEl) return;
+  markEl.innerHTML = '';
+  const symbol = createCornerSymbol(corner);
+  if (symbol) markEl.appendChild(symbol);
+}
+
 // blankIndices marks which character positions in `word` were placed via
 // the blank/wildcard letter — those render gold via .blank-letter.
 export function renderCorner(cornerEl, word, blankIndices = []) {
@@ -143,10 +157,6 @@ export function renderModeOptions(containerEl, modes) {
   });
 }
 
-// Each tier shows a short `note` about what it deals, so the player picks
-// with that in front of them rather than discovering it on the board. The
-// note is composed by the caller (see showDifficultyStep in main.js) —
-// this stays a pure renderer and doesn't know what a mode or a tier is.
 export function renderDifficultyOptions(containerEl, difficulties) {
   containerEl.innerHTML = '';
   difficulties.forEach((difficulty) => {
@@ -154,9 +164,8 @@ export function renderDifficultyOptions(containerEl, difficulties) {
     btn.type = 'button';
     btn.className = 'splash-btn difficulty-btn';
     btn.dataset.difficulty = difficulty.id;
-    btn.innerHTML = `<span class="splash-btn-name"></span><span class="splash-btn-note"></span>`;
+    btn.innerHTML = `<span class="splash-btn-name"></span>`;
     btn.querySelector('.splash-btn-name').textContent = difficulty.label;
-    btn.querySelector('.splash-btn-note').textContent = difficulty.note ?? '';
     containerEl.appendChild(btn);
   });
 }
@@ -208,6 +217,7 @@ export function renderObjectiveList(listEl, objectives) {
   listEl.innerHTML = '';
   objectives.forEach((objective) => {
     const { status, description, current, goal, enduring } = objective;
+    const corner = objective.params?.corner ?? null;
     const item = document.createElement('li');
     item.className = `objective-row ${status}`;
 
@@ -215,6 +225,18 @@ export function renderObjectiveList(listEl, objectives) {
     mark.className = 'objective-status';
     mark.setAttribute('aria-hidden', 'true');
     mark.textContent = status === 'complete' ? '✓' : status === 'failed' ? '✗' : '';
+
+    // Which corner an objective is bound to reads off its resolved params
+    // — no objective type has to declare itself "corner-scoped", the param
+    // being there is the whole signal. The cell is emitted either way so a
+    // corner-free objective ("Score 13 words") leaves a blank gutter and
+    // every description still starts at the same x.
+    const symbol = document.createElement('span');
+    symbol.className = 'objective-symbol';
+    const symbolArt = corner
+      ? createCornerSymbol(corner, { title: `${cornerShapeLabel(corner)} corner` })
+      : null;
+    if (symbolArt) symbol.appendChild(symbolArt);
 
     const body = document.createElement('span');
     body.className = 'objective-body';
@@ -238,7 +260,7 @@ export function renderObjectiveList(listEl, objectives) {
     progress.className = 'objective-progress';
     progress.textContent = enduring ? `${current}/${goal}` : `${Math.min(current, goal)}/${goal}`;
 
-    item.append(mark, body, progress);
+    item.append(mark, symbol, body, progress);
     listEl.appendChild(item);
   });
 }
