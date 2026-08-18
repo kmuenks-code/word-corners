@@ -143,6 +143,18 @@ function perCorner(count, cost) {
   return CORNERS.map((corner) => ({ type: 'wordsInCorner', params: { corner, count }, cost }));
 }
 
+// Same idea for the two restrictive corner types below.
+function perCornerOnlyLength(length, cost) {
+  return CORNERS.map((corner) => ({
+    type: 'cornerOnlyLength',
+    params: { corner, length, count: 1 },
+    cost,
+  }));
+}
+function perCornerWordLimit(limit, cost) {
+  return CORNERS.map((corner) => ({ type: 'cornerWordLimit', params: { corner, limit }, cost }));
+}
+
 // The priced catalog the Objective mode draws from.
 //
 // `cost` is this exact tuning's difficulty in budget points — the whole
@@ -195,6 +207,31 @@ export const OBJECTIVE_POOL = Object.freeze([
   ...perCorner(5, 3),
   ...perCorner(6, 4),
   ...perCorner(8, 6),
+
+  // Restrictive: only this exact length may ever be scored in the named
+  // corner, and landing one is the whole objective (see cornerOnlyLength
+  // in definitions.js — a wrong-length word there fails it on the spot).
+  // Priced steeper than the equivalent wordsOfLength row for the same
+  // length: needing exactly one word is easy on its own, but the corner
+  // stays a live landmine for the rest of the game, and every other
+  // objective that would naturally want to use this corner now has to
+  // route around it too. Deliberately no 1- or 2-cost rung — this type is
+  // meant to be out of reach at Easy's smallest budgets. (Feasibility at
+  // every tier still holds: other types already carry the pool's 1-cost
+  // rows, which is all `selectWithinBudget` needs to fill a remainder —
+  // see the "1-cost rung for every type" note in CLAUDE.md, which is
+  // about *this type's own* reachability, not a hard requirement.)
+  ...perCornerOnlyLength(5, 3),
+  ...perCornerOnlyLength(6, 4),
+
+  // Restrictive: the named corner must never reach `limit` words, total —
+  // 0 is a pass (see cornerWordLimit in definitions.js). Priced lighter
+  // than cornerOnlyLength: "mostly leave this corner alone" is a real
+  // strategy (just don't drop letters there), where "land exactly the
+  // right length" is not. Lower limit is the harsher constraint, so it
+  // costs more.
+  ...perCornerWordLimit(2, 2),
+  ...perCornerWordLimit(3, 1),
 ]);
 
 function groupByType(pool) {

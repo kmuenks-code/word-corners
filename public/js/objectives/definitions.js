@@ -114,7 +114,73 @@ const wordsInCorner = counting({
   matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
 });
 
-const DEFINITIONS = [wordsOfLength, words, totalScore, wordsInCorner];
+// ---------------------------------------------------------------------
+// Restrictive objectives: a constraint that can fail mid-game, not just
+// a target that runs out of time. Both use `failed` — the only two
+// definitions that do, so far — which `applyEventToObjective` (tracker.js)
+// checks on every event, ahead of the normal goal check. In Objective mode
+// (`endOnFailure: true` by default) a `failed` objective ends the run on
+// the spot, on whatever move triggered it — these are the first objectives
+// where that's a real, reachable outcome rather than something only
+// finalizeObjectives produces at game end.
+// ---------------------------------------------------------------------
+
+// Land `count` words of exactly `length` in `corner` — and nothing else
+// there, ever. Not `enduring`: once `count` is reached with no violation,
+// it resolves COMPLETE and freezes (the standard goal-reached path in
+// tracker.js's resolveStatus), so a wrong-length word in that corner
+// *after* completion doesn't undo it — the obligation was already met.
+// A wrong-length word *before* completion fails it immediately.
+//
+// Progress needs two independent facts per event — how many qualifying
+// words landed, and whether a disqualifying one ever did — so this can't
+// be a single running number the way `counting()` produces; it's the
+// `{ count, violated }` shape CLAUDE.md's "Adding to it" describes for
+// definitions with a progress shape counting() doesn't fit.
+const cornerOnlyLength = Object.freeze({
+  id: 'cornerOnlyLength',
+  label: 'Only one word length in a corner',
+  defaults: { corner: 'nw', length: 6, count: 1 },
+  describe: (p) =>
+    `Land ${plural(p.count, `${p.length}-letter word`)} in the ${cornerLabel(p.corner)} corner — nothing else there`,
+  goal: (p) => p.count,
+  initial: () => ({ count: 0, violated: false }),
+  advance: (progress, event, params) => {
+    if (event.type !== GameEvent.WORD_SCORED || event.corner !== params.corner) return progress;
+    if (event.length === params.length) return { ...progress, count: progress.count + 1 };
+    return { ...progress, violated: true };
+  },
+  measure: (progress) => progress.count,
+  failed: (progress) => progress.violated,
+});
+
+// Score fewer than `limit` words in `corner`, total, any length — 0 is a
+// pass. `enduring`, so unlike cornerOnlyLength it never resolves COMPLETE
+// early: it only finalizes at game end (finalizeObjectives, runtime.js),
+// same as any other enduring objective that survived without failing.
+// `goal` reads as the ceiling `limit` names, not a target to reach.
+const cornerWordLimitCounter = counting({
+  id: 'cornerWordLimit',
+  label: 'Word cap in one corner',
+  defaults: { corner: 'nw', limit: 3 },
+  describe: (p) => `Score fewer than ${plural(p.limit, 'word')} in the ${cornerLabel(p.corner)} corner`,
+  goal: (p) => p.limit,
+  matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
+});
+const cornerWordLimit = Object.freeze({
+  ...cornerWordLimitCounter,
+  enduring: true,
+  failed: (progress, params) => progress >= params.limit,
+});
+
+const DEFINITIONS = [
+  wordsOfLength,
+  words,
+  totalScore,
+  wordsInCorner,
+  cornerOnlyLength,
+  cornerWordLimit,
+];
 
 const BY_ID = Object.freeze(
   DEFINITIONS.reduce((map, definition) => {

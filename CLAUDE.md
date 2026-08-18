@@ -315,7 +315,7 @@ it is what the "Objective" mode on the splash runs on. Endless is the same
 runtime with an empty objective list, which the runtime detects and skips
 all its bookkeeping for, so Endless plays exactly as the game always has.
 
-**The catalog is deliberately small.** Four definitions and two game
+**The catalog is deliberately small.** Six definitions and two game
 modes. An early draft shipped eleven definitions, a `RANDOM_POOL`, and a
 three-level `CAMPAIGN_LEVELS` table on spec; all of it was removed before
 any of it was used, and the catalog was rebuilt one objective at a time as
@@ -431,9 +431,42 @@ Five, each ignorant of the one above it:
    pure functions over `(progress, event, params)` — no DOM, no state, no
    randomness, which is what makes replay (below) safe.
 
-   Ships **four**: `wordsOfLength` (`count`, `length`, `exact`), `words`
+   Ships **six**: `wordsOfLength` (`count`, `length`, `exact`), `words`
    (`count`), `totalScore` (`points`), `wordsInCorner` (`count`,
-   `corner`).
+   `corner`), `cornerOnlyLength` (`corner`, `length`, `count`),
+   `cornerWordLimit` (`corner`, `limit`).
+
+   The last two are **restrictive**: a goal you're climbing toward isn't
+   the whole story, there's also a way to fail the objective *before* the
+   game would otherwise end, via an optional `failed(progress, params)`
+   hook — checked on every event, ahead of the normal goal check (see
+   `resolveStatus` in `tracker.js`). They're the first two definitions to
+   use it; every earlier one only ever fails via `finalizeObjectives` at
+   game end, when time simply runs out on an unmet goal. Since Objective
+   mode's default `endOnFailure: true` ends the whole run the instant any
+   objective fails, a restrictive objective failing mid-game is an instant
+   loss, not a missed goal — reachable on whatever specific move triggered
+   it, corners still open, other objectives possibly nearly done. That's
+   deliberate, not a side effect to guard against.
+
+   `cornerOnlyLength` — land `count` words of exactly `length` in `corner`,
+   and *never* a different length there. It is not `enduring`: once
+   `count` is reached with no violation, it resolves `complete` and
+   freezes the normal way (the goal-reached path every non-enduring
+   objective already takes), so a wrong-length word in that corner *after*
+   completion doesn't retroactively fail it — the obligation was already
+   met. A wrong-length word *before* completion fails it on the spot. Its
+   progress is `{ count, violated }` rather than a bare number, since
+   `failed` and the goal check need to read independent facts off the same
+   event.
+
+   `cornerWordLimit` — score fewer than `limit` words in `corner`, total,
+   any length; 0 is a pass. It *is* `enduring` (see below), so unlike
+   `cornerOnlyLength` it never resolves early — surviving to game end
+   without hitting `limit` is the whole condition, same as any other
+   enduring objective. Built on the `counting()` helper (progress is a
+   plain running count) with `enduring`/`failed` added afterward, since
+   `counting()` alone has no notion of either.
 
    **Difficulty is deliberately absent from this file.** Params resolve in
    two layers — `defaults` < the spec's own `params` — and nothing here
