@@ -9,32 +9,50 @@
 // `.empty` class (the hold slot with nothing in it) or the `.blocked`
 // class (a choice bubble frozen out while a blank letter is pending —
 // see main.js) never starts a drag.
+//
+// Only one drag can be live at a time, across every initDrag() call:
+// `activeDrag` is module-level, and each drag remembers the pointerId it
+// started with. Without both, a second finger on the other choice bubble
+// would put two closures in the dragging state at once — the first lift
+// then fires the window `pointerup` for both, appending two letters to the
+// same corner from one gesture, with only one of them undoable.
+
+let activeDrag = null;
 
 export function initDrag(dragEl, corners, onDrop, hitEl = dragEl) {
-  let dragging = false;
-  let startX = 0;
-  let startY = 0;
+  let pointerId = null;
   let offsetX = 0;
   let offsetY = 0;
 
+  // Puts the letter back in its slot and clears the drop highlight. Shared
+  // by the drop path and the cancel path, so a cancelled gesture can't
+  // leave the letter latched mid-flight.
+  function endDrag() {
+    pointerId = null;
+    activeDrag = null;
+    dragEl.classList.remove('dragging');
+    corners.forEach((c) => c.classList.remove('drop-target'));
+    resetDragPosition(dragEl);
+  }
+
   hitEl.addEventListener('pointerdown', (e) => {
     if (hitEl.classList.contains('empty') || hitEl.classList.contains('blocked')) return;
-    dragging = true;
+    if (activeDrag) return;
+    pointerId = e.pointerId;
+    activeDrag = dragEl;
     hitEl.setPointerCapture(e.pointerId);
     dragEl.classList.add('dragging');
     const rect = dragEl.getBoundingClientRect();
-    startX = rect.left;
-    startY = rect.top;
     offsetX = e.clientX - rect.left;
     offsetY = e.clientY - rect.top;
     dragEl.style.position = 'fixed';
-    dragEl.style.left = `${startX}px`;
-    dragEl.style.top = `${startY}px`;
+    dragEl.style.left = `${rect.left}px`;
+    dragEl.style.top = `${rect.top}px`;
     dragEl.style.margin = '0';
   });
 
   window.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
+    if (e.pointerId !== pointerId) return;
     const x = e.clientX - offsetX;
     const y = e.clientY - offsetY;
     dragEl.style.left = `${x}px`;
@@ -45,18 +63,21 @@ export function initDrag(dragEl, corners, onDrop, hitEl = dragEl) {
   });
 
   window.addEventListener('pointerup', (e) => {
-    if (!dragging) return;
-    dragging = false;
-    dragEl.classList.remove('dragging');
+    if (e.pointerId !== pointerId) return;
 
     const target = cornerUnderPoint(corners, e.clientX, e.clientY);
-    corners.forEach((c) => c.classList.remove('drop-target'));
-
-    resetDragPosition(dragEl);
+    endDrag();
 
     if (target) {
       onDrop(target.dataset.corner);
     }
+  });
+
+  // The browser can take the gesture away — a system gesture, an
+  // interrupting call, too many touch points. Same cleanup, no drop.
+  window.addEventListener('pointercancel', (e) => {
+    if (e.pointerId !== pointerId) return;
+    endDrag();
   });
 }
 

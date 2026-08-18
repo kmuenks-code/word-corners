@@ -187,8 +187,8 @@ function advanceChoice(index) {
 // readBests in src/api/shared.js). Showing them on an Objective game-over
 // card would invite a comparison against a number this game was never
 // eligible for — the objective summary is that card's scoreboard instead.
-function renderBests() {
-  const ranked = objectives.snapshot().mode.id === 'endless';
+function renderBests(view = objectives.snapshot()) {
+  const ranked = view.mode.id === 'endless';
   renderBestScore(personalBestRowEl, personalBestEl, ranked ? cachedBests.personalBest : null);
   renderBestScore(globalBestRowEl, globalBestEl, ranked ? cachedBests.globalBest : null);
 }
@@ -199,9 +199,11 @@ function renderBests() {
 // and nothing else — no game state is read here, which is what keeps the
 // objective layering intact once it has a UI (see js/objectives/index.js).
 // Subscribed to the runtime in start(), so it re-renders on every change
-// including the rewind an undo performs.
-function renderObjectiveState() {
-  const list = objectives.snapshot().objectives;
+// including the rewind an undo performs — and takes the snapshot the
+// runtime already built for that notification, falling back to asking for
+// one only on the direct calls that have no snapshot in hand.
+function renderObjectiveState(view = objectives.snapshot()) {
+  const list = view.objectives;
   const done = list.filter((o) => o.status === 'complete').length;
 
   renderObjectiveFlag(objectiveFlagEl, objectiveFlagBadgeEl, {
@@ -290,8 +292,9 @@ function endGame() {
   // 'active' — it was never a contest — and keeps the neutral heading, so
   // Endless reads exactly as it always has.
   renderVerdict(gameOverLabelEl, final.status === 'won' ? 'You Win!' : 'Game Over');
+  // No renderObjectiveState() here: finish() notifies its listeners before
+  // returning, so the flag and panel are already showing `final`.
   renderGameOverObjectives(gameOverObjectivesEl, final.objectives);
-  renderObjectiveState();
 
   renderGameOver(document.body, finalScoreEl, state.score);
   // Score isn't ranked in Objective mode (see "Recording objective
@@ -299,7 +302,7 @@ function endGame() {
   // objective list above already says how the game went, so the row is
   // hidden rather than shown alongside it.
   finalScoreRowEl.hidden = final.mode.id !== 'endless';
-  renderBests();
+  renderBests(final);
 
   if (gameRecorded) return;
   gameRecorded = true;
@@ -308,7 +311,7 @@ function endGame() {
   submitGame({ score: state.score, stats: state.stats, result: final }).then((bests) => {
     if (!bests) return;
     cachedBests = bests;
-    renderBests();
+    renderBests(final);
   });
 }
 
