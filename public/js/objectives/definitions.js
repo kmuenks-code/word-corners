@@ -111,7 +111,7 @@ const wordsInCorner = counting({
   id: 'wordsInCorner',
   label: 'Words in one corner',
   defaults: { count: 3, corner: 'nw' },
-  describe: (p) => `Clear ${plural(p.count, 'word')} here`,
+  describe: (p) => `Score ${plural(p.count, 'word')}`,
   matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
 });
 
@@ -142,8 +142,7 @@ const cornerOnlyLength = Object.freeze({
   id: 'cornerOnlyLength',
   label: 'Only one word length in a corner',
   defaults: { corner: 'nw', length: 6, count: 1 },
-  describe: (p) =>
-    `Land ${plural(p.count, `${p.length}-letter word`)} here — and nothing else`,
+  describe: (p) => `Score __only__ ${plural(p.count, `${p.length}-letter word`)}`,
   goal: (p) => p.count,
   initial: () => ({ count: 0, violated: false }),
   advance: (progress, event, params) => {
@@ -164,7 +163,7 @@ const cornerWordLimitCounter = counting({
   id: 'cornerWordLimit',
   label: 'Word cap in one corner',
   defaults: { corner: 'nw', limit: 3 },
-  describe: (p) => `Score fewer than ${plural(p.limit, 'word')} here`,
+  describe: (p) => `Score fewer than ${plural(p.limit, 'word')}`,
   goal: (p) => p.limit,
   matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
 });

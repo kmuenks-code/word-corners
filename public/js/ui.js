@@ -213,6 +213,24 @@ export function pulseObjectiveFlag(flagEl) {
 // print it as-is. An `enduring` objective's goal is a limit rather than a
 // target, so it gets no meter — a bar filling up would read as progress
 // when it actually means trouble.
+// A description may wrap one word in `__..__` to call it out — e.g.
+// "Score __only__ 1 6-letter word" — which renders as an underline. Plain
+// text otherwise; there's no general markdown support here, just this one
+// emphasis marker.
+function renderObjectiveDescription(el, text) {
+  const match = text.match(/^(.*)__(.+?)__(.*)$/);
+  if (!match) {
+    el.textContent = text;
+    return;
+  }
+  const [, before, emphasized, after] = match;
+  if (before) el.appendChild(document.createTextNode(before));
+  const u = document.createElement('u');
+  u.textContent = emphasized;
+  el.appendChild(u);
+  if (after) el.appendChild(document.createTextNode(after));
+}
+
 export function renderObjectiveList(listEl, objectives) {
   listEl.innerHTML = '';
   objectives.forEach((objective) => {
@@ -242,7 +260,7 @@ export function renderObjectiveList(listEl, objectives) {
     body.className = 'objective-body';
     const desc = document.createElement('span');
     desc.className = 'objective-desc';
-    desc.textContent = description;
+    renderObjectiveDescription(desc, description);
     body.appendChild(desc);
 
     if (!enduring) {
