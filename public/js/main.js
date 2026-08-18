@@ -61,6 +61,8 @@ import {
   renderObjectiveList,
   showObjectivePanel,
   hideObjectivePanel,
+  showHowToPlay,
+  hideHowToPlay,
   renderVerdict,
   renderGameOverObjectives,
 } from './ui.js';
@@ -143,6 +145,9 @@ const objectiveFlagBadgeEl = document.getElementById('objective-flag-badge');
 const objectivePanelEl = document.getElementById('objective-panel');
 const objectiveListEl = document.getElementById('objective-list');
 const objectivePanelCloseBtn = document.getElementById('objective-panel-close');
+const hintBarEl = document.getElementById('hint-bar');
+const howToPlayEl = document.getElementById('how-to-play');
+const howToPlayCloseBtn = document.getElementById('how-to-play-close');
 
 function cornerElFor(cornerName) {
   return cornerEls.find((c) => c.dataset.corner === cornerName);
@@ -515,6 +520,7 @@ function startGame(mode) {
   hideGameOver(document.body);
   hideBlankPicker(blankPickerEl);
   hideObjectivePanel(objectivePanelEl);
+  hideHowToPlay(howToPlayEl);
   renderBlankState();
   renderScore(scoreEl, state.score);
   cornerEls.forEach((cornerEl) => {
@@ -574,6 +580,14 @@ async function start() {
     if (btn) handleDifficultyChosen(btn.dataset.difficulty);
   });
   splashBackBtn.addEventListener('click', showModeStep);
+
+  // The bottom hint bar is the rules button. Dismisses like the objective
+  // panel — backdrop or button — since it's informational too.
+  hintBarEl.addEventListener('click', () => showHowToPlay(howToPlayEl));
+  howToPlayCloseBtn.addEventListener('click', () => hideHowToPlay(howToPlayEl));
+  howToPlayEl.addEventListener('click', (e) => {
+    if (e.target === howToPlayEl) hideHowToPlay(howToPlayEl);
+  });
 
   objectiveFlagEl.addEventListener('click', () => showObjectivePanel(objectivePanelEl));
   objectivePanelCloseBtn.addEventListener('click', () => hideObjectivePanel(objectivePanelEl));

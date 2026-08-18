@@ -291,6 +291,16 @@ export function hideObjectivePanel(panelEl) {
   panelEl.hidden = true;
 }
 
+// The rules overlay. Its content is static markup (index.html) — there is
+// nothing per-game to render into it, so these only toggle visibility.
+export function showHowToPlay(overlayEl) {
+  overlayEl.hidden = false;
+}
+
+export function hideHowToPlay(overlayEl) {
+  overlayEl.hidden = true;
+}
+
 // The game-over headline. Objective mode resolves to a real verdict; an
 // endless game was never a contest, so it keeps the neutral wording.
 export function renderVerdict(labelEl, text) {
