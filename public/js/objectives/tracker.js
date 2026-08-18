@@ -10,8 +10,11 @@
 //     description: 'Land one seven-letter monster' }
 // `params` may be partial — the definition's defaults fill the rest (see
 // resolveParams in definitions.js). `id` and `description` are optional
-// overrides. A pool row additionally carries `cost`, which matters only to
-// the selector in modes.js and is ignored here.
+// overrides. A pool row additionally carries `cost`, which matters to the
+// selector in modes.js; here it is only carried through onto the instance
+// and into the snapshot, so a recorded game can say what a completed or
+// failed objective was priced at (see "Recording objective results" in
+// CLAUDE.md). Nothing in this file reads it.
 //
 // An *instance* adds the resolved params plus mutable progress/status.
 
@@ -37,6 +40,9 @@ export function instantiateObjectives(specs = []) {
       id: spec.id ?? `${spec.type}-${index + 1}`,
       type: spec.type,
       params,
+      // Null for a mode that lists its objectives outright rather than
+      // drawing them from a priced pool.
+      cost: spec.cost ?? null,
       definition,
       description: spec.description ?? definition.describe(params),
       goal: definition.goal(params),
@@ -109,10 +115,17 @@ export function finalizeObjectives(objectives) {
 // definition object itself so the result stays serializable. `current` is
 // reported raw — a 214-point game against a 150-point goal reads 214, and
 // it's the renderer's job to clamp a progress bar if it wants to.
+//
+// `params` and `cost` are here for the recorded result rather than for the
+// HUD: a success rate is only meaningful per *tuning*, so "8 three-letter
+// words" has to be distinguishable from "18" of them in the stored row.
+// params values are primitives, so a shallow copy is a full one.
 export function snapshotObjectives(objectives) {
   return objectives.map((objective) => ({
     id: objective.id,
     type: objective.type,
+    params: { ...objective.params },
+    cost: objective.cost,
     description: objective.description,
     current: currentValue(objective),
     goal: objective.goal,

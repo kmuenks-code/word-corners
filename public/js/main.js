@@ -177,9 +177,14 @@ function advanceChoice(index) {
   drawNextLetter();
 }
 
+// Only Endless is ranked, and the server's bests are filtered to match (see
+// readBests in src/api/shared.js). Showing them on an Objective game-over
+// card would invite a comparison against a number this game was never
+// eligible for — the objective summary is that card's scoreboard instead.
 function renderBests() {
-  renderBestScore(personalBestRowEl, personalBestEl, cachedBests.personalBest);
-  renderBestScore(globalBestRowEl, globalBestEl, cachedBests.globalBest);
+  const ranked = objectives.snapshot().mode.id === 'endless';
+  renderBestScore(personalBestRowEl, personalBestEl, ranked ? cachedBests.personalBest : null);
+  renderBestScore(globalBestRowEl, globalBestEl, ranked ? cachedBests.globalBest : null);
 }
 
 // ---------- Objective HUD ----------
@@ -294,7 +299,9 @@ function endGame() {
 
   if (gameRecorded) return;
   gameRecorded = true;
-  submitGame({ score: state.score, stats: state.stats }).then((bests) => {
+  // `final` carries the mode, the verdict, and every objective's tuning and
+  // final state — the whole of what a recorded Objective game is for.
+  submitGame({ score: state.score, stats: state.stats, result: final }).then((bests) => {
     if (!bests) return;
     cachedBests = bests;
     renderBests();

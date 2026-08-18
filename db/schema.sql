@@ -1,10 +1,19 @@
 -- Word Corners — D1 (SQLite) schema.
 -- Apply with:
---   npx wrangler d1 execute word-corners --local  --file=db/schema.sql
---   npx wrangler d1 execute word-corners --remote --file=db/schema.sql
+--   npm run db:init              (local dev database)
+--   npm run db:init:staging
+--   npm run db:init:production
 --
--- One row per completed game. Everything here is a summary the client
--- computes during play and posts once, at game over (see functions/api/games.js).
+-- This file is the shape of a *fresh* database. Every statement is
+-- IF NOT EXISTS, so re-running it on an existing database is a no-op —
+-- which also means it will NOT add columns to a table that already
+-- exists. Changes to an already-deployed database go in db/migrations/,
+-- and land here too so a fresh database skips straight to the end state.
+--
+-- Two tables:
+--   games            one row per completed game
+--   game_objectives  one row per objective that game dealt (Objective mode
+--                    only; an Endless game contributes none)
 
 CREATE TABLE IF NOT EXISTS games (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,6 +24,32 @@ CREATE TABLE IF NOT EXISTS games (
   player_name    TEXT,
   -- GAME_VERSION from public/js/version.js at the time the game was played.
   game_version   TEXT    NOT NULL,
+
+  -- Which game mode was played: 'endless' or 'objective' (GAME_MODES in
+  -- public/js/objectives/modes.js). Unsuffixed, with the tier in
+  -- `difficulty` beside it, so all Objective games group without a LIKE.
+  mode_id        TEXT    NOT NULL DEFAULT 'endless',
+  -- 'easy' | 'medium' | 'hard' | 'expert', or NULL for a mode that doesn't
+  -- ask for a tier (Endless).
+  difficulty     TEXT,
+  -- The mode's verdict: 'won', 'lost', or 'active' meaning "no verdict
+  -- applies" — an Endless game was never a contest.
+  outcome        TEXT    NOT NULL DEFAULT 'active',
+  -- Why, when there is a verdict: 'objectivesComplete', 'objectiveFailed',
+  -- 'objectivesUnfinished', 'outOfMoves', 'outOfTime'. NULL when active.
+  outcome_reason TEXT,
+  -- Denormalized deal summary, so "win rate by tier" and partial credit
+  -- ("lost, but 2 of 3 done") don't need a join. Both are derivable from
+  -- game_objectives; these rows are append-only and written in one batch
+  -- with their children, so the two can't drift.
+  objectives_total    INTEGER NOT NULL DEFAULT 0,
+  objectives_complete INTEGER NOT NULL DEFAULT 0,
+
+  -- Score is only ranked for Endless (see readBests in src/api/shared.js):
+  -- an Objective game ends the moment its goals are met, so its score says
+  -- more about when it stopped than about how well it went. Still recorded
+  -- for every game, because it is useful *tuning* data next to a points
+  -- objective's goal.
   score          INTEGER NOT NULL,
   -- Wall-clock milliseconds from the first letter being dealt to game over.
   duration_ms    INTEGER NOT NULL,
@@ -29,8 +64,76 @@ CREATE TABLE IF NOT EXISTS games (
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
--- Global leaderboard reads: "highest score, any player".
-CREATE INDEX IF NOT EXISTS idx_games_score ON games (score DESC);
+-- Global leaderboard reads: "highest Endless score, any player".
+CREATE INDEX IF NOT EXISTS idx_games_mode_score
+  ON games (mode_id, score DESC);
 
--- Personal-best reads: "highest score for this device".
-CREATE INDEX IF NOT EXISTS idx_games_player_score ON games (player_id, score DESC);
+-- Personal-best reads: "highest Endless score for this device".
+CREATE INDEX IF NOT EXISTS idx_games_mode_player_score
+  ON games (mode_id, player_id, score DESC);
+
+-- Tuning reads: "how did Hard games go", "how long does an Expert game run".
+CREATE INDEX IF NOT EXISTS idx_games_mode_difficulty
+  ON games (mode_id, difficulty);
+
+
+-- One row per objective dealt, so a per-objective success rate is a GROUP BY
+-- rather than a JSON scan. This is the table the difficulty tuning reads:
+--
+--   SELECT type, params, cost,
+--          COUNT(*) AS dealt,
+--          SUM(completed) AS completed,
+--          ROUND(AVG(completed) * 100, 1) AS pct
+--   FROM game_objectives
+--   GROUP BY type, params
+--   ORDER BY pct;
+--
+-- A row that comes back near 100% is priced too cheap for what it asks;
+-- near 0% too dear. Rows sharing a `cost` should land at similar rates —
+-- where they don't, that cost rung is mixing easy and hard work, which is
+-- the specific thing flagged under "Not yet built" in CLAUDE.md.
+CREATE TABLE IF NOT EXISTS game_objectives (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  game_id      INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  -- Index within that game's deal, so a deal can be reconstructed in order.
+  position     INTEGER NOT NULL,
+
+  -- The objective *type* (an id from public/js/objectives/definitions.js),
+  -- and the resolved params that tuned it, as canonical JSON with the keys
+  -- sorted — {"count":8,"exact":true,"length":3}. Sorted so the string is
+  -- stable enough to GROUP BY: one tuning is one group, no matter what key
+  -- order the client happened to serialize.
+  type         TEXT    NOT NULL,
+  params       TEXT    NOT NULL,
+  -- What OBJECTIVE_POOL priced this tuning at, in budget points. NULL for a
+  -- mode that lists its objectives outright instead of drawing them.
+  cost         INTEGER,
+  -- The player-facing wording, denormalized so old rows stay readable after
+  -- the pool is retuned or a describe() is reworded.
+  description  TEXT    NOT NULL,
+
+  goal         INTEGER NOT NULL,
+  -- Where the player actually got to. Recorded even for a completed
+  -- objective, and NOT clamped to the goal — how far *past* it a completed
+  -- objective ran says whether it was demanding or incidental.
+  final_value  INTEGER NOT NULL,
+  -- An enduring objective is a limit survived rather than a target hit, so
+  -- its `goal` reads as a ceiling and `final_value` climbing toward it is
+  -- bad news. None ship yet; the column keeps such a row interpretable.
+  enduring     INTEGER NOT NULL DEFAULT 0,
+
+  -- 1 complete, 0 failed. Stored as 0/1 rather than the status text so the
+  -- success rate is AVG(completed) and nothing has to spell out which
+  -- string counts as a win. finalizeObjectives() resolves every objective
+  -- to one or the other at game end, so there is no third state to record.
+  completed    INTEGER NOT NULL,
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- The success-rate rollup above: group by tuning.
+CREATE INDEX IF NOT EXISTS idx_game_objectives_tuning
+  ON game_objectives (type, params);
+
+-- Reconstructing one game's deal.
+CREATE INDEX IF NOT EXISTS idx_game_objectives_game
+  ON game_objectives (game_id, position);

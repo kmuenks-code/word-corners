@@ -345,6 +345,12 @@ export function budgetFor(id, difficulty) {
 // the runtime calls at game start and on every reset — so each new game
 // re-rolls its set rather than replaying the one drawn when the mode object
 // was built.
+//
+// The live mode keeps the table row's `id` unsuffixed — the tier lives in
+// `difficulty`, which is on the mode and in the snapshot beside it, so
+// folding it into the id too would only make the recorded `mode_id` say
+// "objective-hard" and force a LIKE to group all Objective games. The
+// human-facing tier is in `label`.
 export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.random } = {}) {
   const mode = getGameMode(id);
   if (!mode) {
@@ -362,7 +368,7 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
   if (mode.pool) {
     const budget = mode.budgets?.[tier] ?? 0;
     return defineMode({
-      id: tier ? `${mode.id}-${tier}` : mode.id,
+      id: mode.id,
       label,
       difficulty: tier,
       selectObjectives: () => selectWithinBudget(mode.pool, budget, random),
@@ -372,7 +378,7 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
   }
 
   return challenge({
-    id: tier ? `${mode.id}-${tier}` : mode.id,
+    id: mode.id,
     label,
     objectives: mode.objectives,
     difficulty: tier,

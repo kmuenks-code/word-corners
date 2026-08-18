@@ -44,16 +44,26 @@ async function request(url, options = {}) {
   }
 }
 
-// Posts one completed game. `stats` is state.stats from gameState.js.
+// Posts one completed game. `stats` is state.stats from gameState.js;
+// `result` is the final snapshot objectives.finish() returned.
 // Returns the refreshed { globalBest, personalBest } the server computed
 // after storing this game, or null if the post didn't land.
-export function submitGame({ score, stats }) {
+//
+// The objective list is what makes an Objective game worth recording — a
+// per-objective success rate is how the pool's costs get tuned, and it needs
+// each objective's *tuning* (type + params), not just its type. Endless
+// posts an empty list and the server stores no objective rows.
+export function submitGame({ score, stats, result }) {
   return request('/api/games', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       playerId: getPlayerId(),
       gameVersion: GAME_VERSION,
+      modeId: result.mode.id,
+      difficulty: result.mode.difficulty,
+      outcome: result.status,
+      outcomeReason: result.reason,
       score,
       durationMs: Date.now() - stats.startedAt,
       wordsTotal: stats.wordsTotal,
@@ -62,6 +72,18 @@ export function submitGame({ score, stats }) {
       words5: stats.words5,
       words6Plus: stats.words6Plus,
       blanksEarned: stats.blanksEarned,
+      objectives: result.objectives.map((objective) => ({
+        type: objective.type,
+        params: objective.params,
+        cost: objective.cost,
+        description: objective.description,
+        goal: objective.goal,
+        // Raw, not clamped to the goal: how far past it a completed
+        // objective ran says whether it was demanding or incidental.
+        finalValue: objective.current,
+        enduring: objective.enduring,
+        status: objective.status,
+      })),
     }),
   });
 }
