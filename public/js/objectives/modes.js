@@ -182,9 +182,9 @@ export const OBJECTIVE_POOL = Object.freeze([
   { type: 'wordsOfLength', params: { length: 4, exact: true, count: 6 }, cost: 2 },
   { type: 'wordsOfLength', params: { length: 4, exact: true, count: 10 }, cost: 3 },
   { type: 'wordsOfLength', params: { length: 4, exact: true, count: 14 }, cost: 4 },
-  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 2 }, cost: 2 },
-  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 4 }, cost: 3 },
-  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 7 }, cost: 4 },
+  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 2 }, cost: 4 },
+  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 4 }, cost: 5 },
+  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 7 }, cost: 8 },
   { type: 'wordsOfLength', params: { length: 6, exact: false, count: 2 }, cost: 6 },
   { type: 'wordsOfLength', params: { length: 7, exact: true, count: 1 }, cost: 6 },
 
