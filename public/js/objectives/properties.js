@@ -57,18 +57,20 @@ import { GameEvent } from './events.js';
 // LENGTH_SHARE is the single most influential number in the whole system:
 // every length-based cost is derived from it.
 //
-// It started as a pure guess (0.45 / 0.28 / 0.15 / 0.08 …) and was corrected
-// once against actual play. A scripted player banking every valid word the
-// moment it existed produced 89% three-letter, 10% four-letter, ~1% five-plus
-// over 25 games. That player is one extreme — maximising word *count* means
-// always submitting at three letters — and a human chasing the superlinear
-// score will grow words further, so the values below sit between the two,
-// leaning toward what was measured.
+// **These are now measured, from human Endless play.** Three games at 0.14.0
+// banked 126 words split 46% / 27% / 17% / 10% across 3 / 4 / 5 / 6-plus
+// letters, and the values below are those shares with the 6-plus tail spread
+// over 6, 7 and 8.
 //
-// Still not validated against human play. It is directly measurable: the
-// `games` table already stores words3 / words4 / words5 / words6Plus per
-// game, so `npm run db:games` has the real distribution in it as soon as
-// enough games are played. Replace these with the observed shares.
+// The two earlier estimates were both wrong in the same direction. A pure
+// guess (0.45 / 0.28 / 0.15 / 0.08) was replaced by a scripted player's 89%
+// three-letter — but that player banked every valid word the instant it
+// existed, which is the one strategy that guarantees short words. A human with
+// blanks finishes words instead: the real distribution is markedly longer than
+// either, and the blank is why.
+//
+// Endless is the only mode these can be read from. An Objective game ends the
+// moment its goals are met, so its length split says what the deal asked for.
 //
 // The vowel rates, by contrast, ARE measured: over ENABLE1, weighted by
 // LENGTH_SHARE, 16.1% of words start with a vowel and 20.4% end with one.
@@ -86,11 +88,18 @@ import { GameEvent } from './events.js';
 // sign error would invert.
 // ---------------------------------------------------------------------
 
-const LENGTH_SHARE = Object.freeze({ 3: 0.55, 4: 0.27, 5: 0.11, 6: 0.05, 7: 0.015, 8: 0.005 });
+const LENGTH_SHARE = Object.freeze({ 3: 0.46, 4: 0.27, 5: 0.17, 6: 0.07, 7: 0.02, 8: 0.01 });
 
 const MAX_TRACKED_LENGTH = 8;
 
-const STEERING = 1.35;
+// A blank is a letter of the player's choosing, and a real game now yields
+// several — 3, 4 and 25 across the three measured games. That is *exactly* the
+// steering faculty this constant stands for: holding a blank, "score a word
+// starting with a vowel" is not a wait for the right draw, it is a decision.
+// Raised from 1.35 on that reasoning. Still the least evidenced number here —
+// unlike LENGTH_SHARE it cannot be read off the `games` table, so it wants the
+// per-tuning rates from `npm run db:objectives` instead.
+const STEERING = 1.5;
 const DICTIONARY_VOWEL_START = 0.161;
 const DICTIONARY_VOWEL_END = 0.204;
 

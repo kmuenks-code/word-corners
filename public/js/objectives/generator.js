@@ -62,17 +62,30 @@ import {
 } from './properties.js';
 
 // Words a player scores in a whole game. The single number every global
-// objective is measured against.
+// objective is measured against, and the one it is most important to get from
+// evidence rather than reasoning.
 //
-// This was 30 on first estimate and is wrong by a lot: a scripted player
-// banking every valid word it could find averaged 6.6 words a game over 25
-// games (best run 29, and several games closed the board with nothing
-// banked). Corners dead-end far sooner than the guess assumed. 12 allows
-// that a human plans openings, spends blanks well, and reads the board in
-// ways the script does not — but the honest reading of the only evidence
-// available is that this is still generous. Correct it from
-// `npm run db:games`, which records words-per-game directly.
-const GLOBAL_VOLUME = 12;
+// **Measured, finally, from human Endless play**: three games at 0.14.0 banked
+// 15, 22 and 89 words — mean 42, median 22. 30 sits between them.
+//
+// The history here is a warning about which games you measure. An early guess
+// of 30 was cut to 12 on the strength of a scripted player averaging 6.6, and
+// that correction was wrong in both its inputs:
+//
+//   - The script banked every valid word the instant it existed, so it never
+//     scored enough per word to cross the 25-point blank threshold. It played
+//     a game without blanks and reported the length of one.
+//   - Every other game on record was an OBJECTIVE game, which ends the moment
+//     its goals are met. `words_total` there measures when the deal stopped,
+//     not what the board can produce. 32 such games averaged 5.9 and never
+//     exceeded 15 — entirely because no deal ever asked for more.
+//
+// What both missed is that blanks compound. A blank escapes a dead corner, so
+// corners stay open, so the game runs longer, so more score accrues, so more
+// blanks are earned. The 89-word game earned 25 blanks and ran 66 minutes.
+// **Read this number from Endless games only**, and re-read it after any
+// change to BLANK_SCORE_INTERVAL or the scoring formula.
+const GLOBAL_VOLUME = 30;
 
 // Words scored in *one* corner. Two numbers, not one, and the asymmetry is
 // the point:
@@ -85,7 +98,10 @@ const GLOBAL_VOLUME = 12;
 //
 // Pricing both off the same number would make limits look harsher than they
 // are and targets look easier.
-const TARGET_CORNER_VOLUME = 4;
+// Held at a third of the whole game, above the even quarter: a corner the
+// player is actively feeding takes more than its share, and blanks make that
+// steering easier than it was when this was 4 against a volume of 12.
+const TARGET_CORNER_VOLUME = GLOBAL_VOLUME / 3;
 const LIMIT_CORNER_VOLUME = GLOBAL_VOLUME / CORNERS.length;
 
 // A target asking for exactly the player's expected output costs this much.
@@ -111,7 +127,15 @@ const MIN_RAW_COST = 0.75;
 // game that yields about 30, which is not a hard objective but an impossible
 // one. It also sets the floor on deal size: an Expert budget of 16 cannot be
 // spent on fewer than three objectives.
-const MAX_COST = 6;
+//
+// **Now 10 — 2× expected output.** 1.2× was chosen when GLOBAL_VOLUME was a
+// guess and the spread between games was assumed small. The measured spread is
+// enormous: 15, 22 and 89 words across three games of the same build, because
+// how long a game runs is mostly decided by how well its blanks are spent.
+// Against a median of 22 and a best of 89, asking 2× the typical game is
+// demanding rather than impossible — and 1.2× could not reach the top of that
+// range at all, which is why an Expert deal used to cap out at 15 words.
+const MAX_COST = 10;
 
 // Loop guard only — no real ladder gets near it.
 const MAX_COUNT = 500;

@@ -147,10 +147,10 @@ export function challenge({
 // one 4-cost objective, or two 2-cost ones, or a 3 and a 1, and so on.
 // This is the single knob for how much a tier asks of the player.
 export const POINT_BUDGETS = Object.freeze({
-  easy: 6,
-  medium: 10,
-  hard: 16,
-  expert: 20,
+  easy: 10,
+  medium: 18,
+  hard: 26,
+  expert: 30,
 });
 
 // ---------------------------------------------------------------------
@@ -200,22 +200,25 @@ export function dealDemand(rows) {
 // exactly, a floor here is what makes the selector reach for a higher
 // `count` — the only lever that buys words rather than luck.
 //
-// The numbers read best against GLOBAL_VOLUME, the 12 words a game the cost
-// model expects. Mean demand at these floors comes to 43% / 70% / 94% / 114%
-// of that, which is the ladder the tiers are meant to be: Easy comfortably
-// inside a normal game, Hard about a whole one, Expert past it.
+// These read best against the three measured Endless games — 15, 22 and 89
+// words, median 22 — rather than against the mean, since the mean is dragged
+// by a single 89-word run. Mean demand at these floors lands about
+// 11 / 19 / 26 / 33, which places the tiers as:
 //
-// **15 is the ceiling**, and it is not arbitrary — MAX_COST 6 caps a global
-// row at 14 words and a corner at 4, so no affordable deal can demand more.
-// Expert sits at 13 rather than 14 deliberately: at 14 every deal saturates
-// to exactly 15 and the tier stops varying. Wanting more than this means
-// raising MAX_COST, which is a statement about asking for more words than a
-// player produces — read its note in generator.js first.
+//   easy    half a median game     — clears comfortably
+//   medium  about a median game
+//   hard    beyond the median      — needs a good game
+//   expert  ~1.5x the median       — needs blanks spent well, and will lose
+//
+// A floor is a *lower bound* the search must clear, and the mean lands well
+// above it because a budget this size buys high counts anyway. Raising a floor
+// past its budget's reach starves variety long before it fails outright — the
+// validator distinguishes the two failures.
 export const MIN_DEMAND = Object.freeze({
-  easy: 4,
-  medium: 7,
-  hard: 10,
-  expert: 13,
+  easy: 6,
+  medium: 14,
+  hard: 20,
+  expert: 24,
 });
 
 // How many objectives one deal may contain, however cheap they are. The

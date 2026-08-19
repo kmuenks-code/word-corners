@@ -484,23 +484,47 @@ Using the chased rate on both sides would price every exclusion as harder
 than it is — the one place in the model where a single sign error inverts the
 answer.
 
-**The numbers are estimated, and one round of correction has already
-happened.** The first pass assumed 30 words a game and a generous length
-mix. A scripted player driving the real UI banked **6.6 words a game** over
-25 games (best run 29; several games closed the board with nothing banked),
-and 89% of what it banked was three letters. Everything was priced far too
-cheap: every target came out at 0% and every limit at 100%. `GLOBAL_VOLUME`
-went 30 → 12 and `LENGTH_SHARE` was pulled sharply short, after which win
-rates ran Easy 6/30, Medium 7/30, Hard 3/30, Expert 0/30 — a monotone ramp,
-with individual objectives spread across the whole 0–100% range instead of
-piled at the ends.
+### Measure Endless games, and only Endless games
+The most expensive lesson in this file. `GLOBAL_VOLUME` went 30 → 12 → 30, and
+both wrong values came from measuring the wrong games.
 
-**That is where scripted tuning stops, on purpose.** The bot banks every
-valid word the instant it exists, which maximises word count and guarantees
-it never makes a long word — so its 0% on "score a word of 4+ letters" is an
-artifact of its strategy, not evidence about that objective's price. Tuning
-further against it would fit the model to a player unlike any human in
-exactly the dimension being measured. The corrective is real games: see
+**What the numbers actually are** (three human Endless games at 0.14.0):
+
+| words | score | blanks earned | minutes |
+|---|---|---|---|
+| 15 | 78 | 3 | 6.7 |
+| 22 | 108 | 4 | 7.2 |
+| **89** | **638** | **25** | 66 |
+
+Median 22, mean 42. Length split 46% / 27% / 17% / 10% across 3 / 4 / 5 / 6+
+letters — `LENGTH_SHARE` is now those measured shares.
+
+**Why 12 was wrong, twice over.** Two sources agreed on ~6 words a game and
+both were measuring something else:
+
+- **A scripted player averaged 6.6.** It banked every valid word the instant
+  it existed, so it scored ~3 points a word, so it never crossed the 25-point
+  blank threshold. *It played a game without blanks and reported the length of
+  one.* A simulator rebuilt later made exactly the same mistake and produced
+  5.8 — agreement between two bots with the same blind spot is not
+  corroboration.
+- **32 recorded games averaged 5.9, never exceeding 15.** Every one was an
+  *Objective* game, which ends the moment its goals are met. `words_total`
+  there measures when the deal stopped, not what the board can produce; the
+  ceiling of 15 was just the largest thing any deal had asked for.
+
+**What both missed is that blanks compound.** A blank escapes a dead corner,
+so corners stay open, so the game runs longer, so more score accrues, so more
+blanks are earned. It is a feedback loop, and a player who never enters it
+sees a completely different game — which is exactly the 15-vs-89 spread in the
+table above, on identical code.
+
+So: **read volume from `mode_id = 'endless'` only**, re-read it after any
+change to `BLANK_SCORE_INTERVAL`, the scoring formula, or `MIN_WORD_LENGTH`,
+and distrust any bot that isn't earning blanks at a human rate.
+
+The per-tuning success rates from `npm run db:objectives` remain the corrective
+for the *rarity* constants, which no amount of Endless play reveals — see
 "Recording objective results".
 
 ### The extension points
@@ -525,12 +549,12 @@ difficulty" is `createMode(id, difficulty)` and nothing more.
 Deals a random set costing **exactly** the tier's budget *and* demanding at
 least the tier's word floor. Two tables, not one:
 
-| | budget (`POINT_BUDGETS`) | word floor (`MIN_DEMAND`) | mean demand, vs. the 12 words/game the model expects |
-|---|---|---|---|
-| easy | 6 | 4 | 5.2 — 43% |
-| medium | 10 | 7 | 8.4 — 70% |
-| hard | 16 | 10 | 11.3 — 94% |
-| expert | 20 | 13 | 13.6 — 114% |
+| | budget (`POINT_BUDGETS`) | word floor (`MIN_DEMAND`) | mean demand | vs. a median 22-word game |
+|---|---|---|---|---|
+| easy | 10 | 6 | 10.4 | half a game |
+| medium | 18 | 14 | 19.1 | about a game |
+| hard | 26 | 20 | 27.1 | beyond one |
+| expert | 30 | 24 | 32.8 | ~1.5× |
 
 Both are meant to be edited. Five things worth knowing:
 
@@ -598,14 +622,13 @@ Three things to know before touching the numbers:
   reach it and nothing can be rejected early. This is the one constraint in
   the selector that *cannot* be a pruning predicate, unlike the possibility
   check. Exhaustiveness is unaffected, so `null` still proves infeasible.
-- **15 is the hard ceiling.** `MAX_COST` 6 caps a global row at 14 words and a
-  corner at 4, so no affordable deal demands more. Expert sits at 13 rather
-  than 14 on purpose: at 14 every deal saturates to exactly 15 and the tier
-  stops varying at all.
+- **The ceiling moves with `MAX_COST`.** At `MAX_COST` 10 against
+  `GLOBAL_VOLUME` 30, a global row reaches 60 words and a corner 20. It was 6
+  and 1.2x expected output, which capped an Expert deal at 15 words total —
+  the single constant most responsible for Expert playing as a four-word game.
 - **A floor too near a budget's reach starves variety.** Easy at budget 4 with
-  a floor of 4 had only ~113 possible deals and repeated visibly; raising the
-  budget to 6 took it to ~1000+. If a tier starts feeling samey, that is the
-  first thing to check — and the failing validator message distinguishes
+  a floor of 4 once had only ~113 possible deals and repeated visibly. If a
+  tier starts feeling samey, that is the first thing to check — and the failing validator message distinguishes
   "can't spend" from "can't spend *and* reach the floor" for exactly this
   reason.
 
@@ -906,8 +929,12 @@ separates them.** Slice by it before reading any rate:
 - **0.13.0** — targets with exclusions, but budgets 4/8/12/16 and no word
   floor: median demand 3 / 3 / 4 / 5, so most deals played far shorter than
   their tier suggests.
-- **0.14.0 onward** — budgets 6/10/16/20 against MIN_DEMAND. `params.exclude` is new
-  in this cohort and reads `""` on an unmodified row.
+- **0.14.0** — budgets 6/10/16/20 against MIN_DEMAND, but still priced at
+  GLOBAL_VOLUME 12. Demand capped at 15, so these deals asked for roughly a
+  third of what the board produces.
+- **0.15.0 onward** — repriced against measured Endless capacity: GLOBAL_VOLUME
+  30, MAX_COST 10, measured LENGTH_SHARE, budgets 10/18/26/30. Not comparable
+  with anything earlier; `params.exclude` reads `""` on an unmodified row.
 
 ## Backend
 One Worker serves both `public/` and the API on the same origin — so no
@@ -1007,14 +1034,22 @@ and internal changes don't need one. Keep it in step with `version` in
   reintroducing limits *gated to a corner that also carries a target* is the
   middle option that was considered and set aside. Decide from played games,
   and delete the dead limit machinery only once decided.
-- **Playtesting the cost model.** The constants have had exactly one round of
-  correction, against a scripted player rather than a human — see "The cost
-  model". Three known-suspect numbers: `LENGTH_SHARE` for 4+ letters (the
-  script never makes long words, so it couldn't measure them), the `STEERING`
-  factor on the two vowel properties (never measured at all), and now the
-  independence assumption behind compound rarity. `db:objectives` prints
-  `exclude` as its own column precisely so an excluded row can be compared
-  against its unmodified twin at the same cost.
+- **Playtesting the cost model.** `GLOBAL_VOLUME` and `LENGTH_SHARE` are now
+  measured (three Endless games, n=3 — worth re-reading once there are more,
+  since the median of 22 and the mean of 42 disagree sharply and one 89-word
+  run drives the gap). What remains unmeasured is everything about *rarity*:
+  the `STEERING` factor on the two vowel properties, the independence
+  assumption behind compound rarity, and whether rows sharing a cost are
+  really comparable work. None of those show up in Endless play — they need
+  `npm run db:objectives`, which prints `exclude` as its own column precisely
+  so an excluded row can be compared against its unmodified twin at the same
+  cost.
+- **Whether Expert should be winnable in a 22-word game.** It currently is
+  not: mean demand 32.8 against a measured median of 22 means the tier is
+  aimed at the upper half of a player's own range, and losing is the expected
+  outcome of a mediocre game. That is a deliberate reading of "Expert" and it
+  has never been played. If it lands wrong, `MIN_DEMAND.expert` moves before
+  anything else does.
   This waits on played games rather than plumbing. Watch whether rows
   sharing a cost really are comparable work. Nothing retunes the pool
   automatically, and nothing should — read the rates, then edit by hand.
