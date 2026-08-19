@@ -49,7 +49,10 @@ one function; `letterSource.js` the draw; `cornerSymbols.js` the four
 shapes; `env.js` production-vs-not; `api.js` the only module that talks to
 the server; `version.js` one constant. `objectives/` is its own layered
 system — see "Objectives", and note `index.js` is the facade `main.js`
-imports from.
+imports from. Objectives there are **generated from three axes** rather than
+listed: `properties.js` is the word-property axis, `definitions.js` holds
+the scope and constraint axes plus the one definition they instantiate, and
+`generator.js` enumerates and prices every combination.
 
 ## Environments
 **Default to staging. Production is only ever deployed on purpose, by the
@@ -294,12 +297,59 @@ Goals the game sets the player, drawn against a points budget set by the
 chosen difficulty. Endless is the same runtime with an empty objective
 list, which the runtime detects and skips its bookkeeping for.
 
-**The catalog is deliberately small** — seven definitions, two modes. An
-early draft shipped eleven definitions, a random pool and a three-level
-campaign table on spec; all of it was removed before any was used, and the
-catalog was rebuilt one objective at a time as modes actually needed them.
-Keep doing that: add an objective when something asks for it, not in
-anticipation.
+**The catalog is generated, not written.** There is exactly one objective
+definition, and every goal the game can set is that one sentence with three
+blanks filled in:
+
+```
+Score {constraint} {count} {property} {in scope}
+```
+
+| axis | lives in | values today |
+|---|---|---|
+| property | `properties.js` | any word; exactly N letters; N+ letters; starts with a vowel; ends in a vowel |
+| scope | `definitions.js` | global, or one of the four corners |
+| constraint | `definitions.js` | at least N, fewer than N |
+
+`generator.js` enumerates every combination, prices each, and drops the ones
+its cost model puts out of range. Adding a property therefore adds its whole
+column of objectives — every scope, both constraints, a full ladder of
+counts — and nothing else in the system changes.
+
+This replaced a hand-written catalog of seven bespoke types and forty priced
+rows. Two of those types did not survive the move and were deleted rather
+than special-cased: `cornerOnlyLength` ("land one 6-letter word here and
+nothing else") is a *conjunction*, unsayable in one sentence — it is now two
+objectives on one corner, which the rules below permit; and `totalScore`
+measured points rather than words, so it had no place on the count axis.
+
+**Why generated rather than listed.** The old catalog had the combinatorics
+in it already — five of its seven types were the same "count words matching
+a predicate" shape at different scopes — but written out longhand, so each
+new property meant a new definition plus eight hand-priced rows, and each
+row's cost was an independent guess. The axes make the space explicit, and
+collapse forty guesses into nine constants.
+
+### There is no `exactly N`
+It was considered and rejected. "Exactly 5" can't complete when it reaches 5
+— a sixth word would break it — so it would have to stay live to game end
+like a limit while also being a target. That is a third status shape the
+tracker doesn't have, and any deal containing one could only ever be won by
+playing the board all the way closed, never early. At-least and fewer-than
+cover the ground between them.
+
+### Limits are corner-only
+`fewerThan` is generated for corner scopes only. A global "score fewer than
+N words" constrains the whole board rather than asking something of a place
+on it, and it contradicts most targets outright.
+
+### The constraint decides the tracker semantics
+This is the tidiest thing to fall out of the three axes. `atLeast` is a
+target: it completes on reaching its count, which is what lets a deal be won
+with corners still open. `fewerThan` is a limit: it fails on reaching its
+count and can never complete early, because surviving to game end *is* the
+condition. So `enduring` stopped being a per-type flag and became a function
+of params — the one change the definition contract needed.
 
 ### Corner symbols
 Corners are identified to the player by **shape**, not direction: NW
@@ -318,40 +368,84 @@ Two consequences:
   would have split every corner tuning's history in two for a purely visual
   change.
 - **A corner objective's `describe` no longer names its corner**, because
-  the renderer supplies it. So the four per-corner variants of a pool rung
+  the renderer supplies it. So the four per-corner variants of one tuning
   produce *identical* description text — anything identifying a row by its
-  description has to add the corner back. `modes.js`'s pool validator does;
+  description has to add the scope back. `modes.js`'s pool validator does;
   a future objective editor would need to as well.
 
-### `cost`, not `points`
-Each pool row carries a **`cost`**: how hard that exact tuning is, in
-budget points. Deliberately not `points`, because the game already means
-*score* by that word — `event.points`, and `totalScore`'s own
-`params.points`, which sits on the same row:
+Note that a scope is `'global'` or a corner id, and it is always present.
+Which corner an objective belongs to is resolved **once**, in
+`snapshotObjectives`, and handed to the UI as `corner` — so no renderer digs
+through params, and the old "carrying a `corner` param is the signal"
+convention is gone.
 
-```js
-{ type: 'totalScore', params: { points: 80 }, cost: 5 }
-```
+### `cost`, not `points`
+Each pool row carries a **`cost`**: how hard that exact combination is, in
+budget points. Deliberately not `points`, because the game already means
+*score* by that word (`event.points`).
 
 Same reasoning keeps the budget off the difficulty buttons: a tier labelled
 "8 points" next to a score badge reads as a target, not a difficulty.
 
+### The cost model
+The one part of this that is genuinely hard, and the reason cost is computed
+rather than tabulated.
+
+**A cost must be comparable across rows** — two 3-cost objectives should be
+about equally hard — because that is exactly what the budget treats them as.
+So cost cannot be a sum of per-axis constants, however tempting that is. The
+axes interact:
+
+- Corner scope doesn't *add* to a property, it **divides** the words
+  available to satisfy it. "3 words starting with a vowel" is a moderate ask
+  globally and a severe one in one corner.
+- What one more word costs depends on the property: +5 three-letter words is
+  loose change, +5 six-letter words is most of a game.
+- A limit **inverts both**. A rarer property makes a limit easier to keep,
+  and a bigger allowance makes it easier still — the exact opposite of how
+  both read on a target.
+
+So everything is priced off one derived quantity: `expected`, the matching
+words a player would score in that scope without trying hard. That's
+`volume × rarity`, and it is where the multiplication lives. A target is
+priced on `count / expected`; a limit on how many of those expected words it
+forbids. Nine constants in `generator.js` and `properties.js`, all commented
+in place.
+
+**The numbers are estimated, and one round of correction has already
+happened.** The first pass assumed 30 words a game and a generous length
+mix. A scripted player driving the real UI banked **6.6 words a game** over
+25 games (best run 29; several games closed the board with nothing banked),
+and 89% of what it banked was three letters. Everything was priced far too
+cheap: every target came out at 0% and every limit at 100%. `GLOBAL_VOLUME`
+went 30 → 12 and `LENGTH_SHARE` was pulled sharply short, after which win
+rates ran Easy 6/30, Medium 7/30, Hard 3/30, Expert 0/30 — a monotone ramp,
+with individual objectives spread across the whole 0–100% range instead of
+piled at the ends.
+
+**That is where scripted tuning stops, on purpose.** The bot banks every
+valid word the instant it exists, which maximises word count and guarantees
+it never makes a long word — so its 0% on "score a word of 4+ letters" is an
+artifact of its strategy, not evidence about that objective's price. Tuning
+further against it would fit the model to a player unlike any human in
+exactly the dimension being measured. The corrective is real games: see
+"Recording objective results".
+
 ### The extension points
-This is the shape the whole system is arranged around. Each is edited
-independently of the others:
+Each is edited independently of the others:
 
 | To add… | Edit | Cost |
 |---|---|---|
-| an objective type | one entry in `definitions.js` + priced rows in `OBJECTIVE_POOL` | nothing else changes |
-| a tuning of an existing objective | one priced row in `OBJECTIVE_POOL` | nothing else changes |
+| a word property | one entry in `properties.js` (predicate, noun phrase, rarity, and where it sits in the lattice) | every scope × constraint × count appears automatically |
+| a scope or constraint | one entry in `definitions.js` + its handling in the cost model | nothing else changes |
+| how a whole class is priced | one constant in `generator.js` | the affected ladders re-derive |
 | a game mode | one row in `GAME_MODES` | appears on the splash automatically |
 | a difficulty tier | one entry in `difficulty.js` + one number in `POINT_BUDGETS` | validator rejects a budget the pool can't spend |
 | how demanding a tier is | one number in `POINT_BUDGETS` | nothing else changes |
 
-A mode names *which* objectives are available and what each is worth; the
-tier supplies only *how much* may be spent. That separation is why "swap in
-objectives by mode and difficulty" is `createMode(id, difficulty)` and
-nothing more.
+A mode names *which* pool is available; the tier supplies only *how much*
+may be spent. That separation is why "swap in objectives by mode and
+difficulty" is `createMode(id, difficulty)` and nothing more.
 
 ### The Objective mode
 Deals a random set costing **exactly** the tier's budget (Easy 4, Medium 8,
@@ -363,123 +457,131 @@ worth knowing:
   the design.
 - **Deal size is picked first**, uniformly among the sizes that can be
   spent exactly, and only then is a combination found. Without that the
-  search biases hard toward using every type — the "take a row" branches
+  search biases hard toward using every family — the "take a row" branches
   vastly outnumber the single "skip" at each step — and Easy would be four
-  1-cost objectives almost every time.
-- **At most one row per exclusion key.** A row claims its `type`, so
-  same-type rows are alternative *tunings* and nobody is dealt "score 8
-  three-letter words" beside "score 18" of them. A corner-scoped row also
-  claims its corner — see below.
+  1-cost objectives almost every time. `MAX_DEAL_SIZE` (6) caps it, since a
+  budget of 16 would otherwise admit sixteen 1-cost goals; the old pool
+  capped this accidentally, at the seven types it happened to contain.
+- **At most one row per *family*.** A family is a combination with the count
+  left off, so rows sharing one are alternative tunings and nobody is dealt
+  "score 5 or more words here" beside "score 12 or more" of them.
 - **Difficulty never touches an objective's params.** A harder tier buys
   bigger objectives because it can afford dearer rows, not because anything
-  rescales. An earlier design had per-definition `byDifficulty` tables
-  rescaling everything; the budget replaced all of it.
+  rescales.
 
-Keep **some 1-cost rungs in the pool** so any remainder is fillable. A type
-may skip its own to stay out of reach at small budgets —
-`wordsStartingWithVowel` (cheapest 2) and `cornerOnlyLength` (cheapest 4)
-both do. The module-load validator is what actually proves each tier
-spendable; the rung habit is what keeps that true. A pool that can't pay a
-budget is a startup error naming the tier, not a player picking Hard and
-getting nothing.
+`MAX_COST` (6) does double duty: because the target ladder is linear in
+`count / expected`, the cap *is* a statement about how far past their
+expected output a player can be asked to go — at cost 6, 1.2×. It also sets
+the floor on deal size, since Expert's 16 can't be spent on fewer than three.
+
+The module-load validator proves every tier spendable, and still means
+something: the search is exhaustive over families *and* over the possibility
+check, so an empty result is proof rather than an unlucky roll. A pool that
+can't pay a budget is a startup error naming the tier, not a player picking
+Hard and getting nothing.
 
 The draw happens inside `selectObjectives()`, which the runtime calls at
 game start and on every reset, so each game re-rolls.
 
-### One objective per corner
-The corner-scoped types make demands of a single corner that don't survive
-being combined. "Clear 5 words here" beside "score fewer than 2 words here"
-is unwinnable outright; "land one 6-letter word here and nothing else"
-beside "clear 5 words here" is winnable *only* if the 6-letter word lands
-first, since reaching `count` freezes `cornerOnlyLength` complete before a
-wrong-length word can violate it — a rule the player is never shown, so in
-practice a trap. Nothing in the selector saw any of this: they're distinct
-types, and one-row-per-type let all three land on one corner.
+### The possibility check
+**Any number of objectives may share a corner.** The rule that used to
+forbid it — one objective per corner — was a blunt instrument standing in
+for a check the system couldn't make: it banned same-corner pairs wholesale
+because it had no way to tell a contradiction from a coincidence. It also
+threw away good deals; "score 8 words here, none starting with a vowel, at
+least one ending in one" is a genuinely interesting corner and was
+unreachable.
 
-The fix generalizes the rule already there rather than adding a second.
-`exclusionKeys(row)` returns what a row claims exclusively — its type, plus
-its corner when it has one — and the search refuses a row whose key is
-taken. **No type declares itself corner-scoped; carrying a `corner` param
-*is* the signal**, the same convention the renderer uses to decide whether
-to draw a shape, so a future corner type is covered with no further work.
+The check that replaced it rests on one relation: **does every word row A
+counts also get counted by row B?** That's `propertySubsumes` (the
+implication lattice in `properties.js` — vowel-initial words are words,
+6-letter words are 5+ letter words) and `scopeSubsumes` (a corner is inside
+global) together. Given that containment, three things follow and all three
+are refused:
 
-Two things this deliberately does *not* do:
+1. **Contradiction.** A demands `m`, B forbids reaching `n`, and `m >= n`.
+   Meeting A necessarily fails B. This is the unwinnable case, and the
+   motivating example: "score 3 or more words starting with a vowel here"
+   beside "score fewer than 3 words here".
+2. **A free target.** Both demand, A's demand is stricter, clearing it
+   clears B automatically. B took a slot and asked for nothing.
+3. **A free limit.** Both forbid, B's is tighter, keeping it keeps A. Same
+   waste, other direction.
 
-- It bans benign same-corner pairings too. Accepted: the alternative is a
-  pairwise conflict table that grows with the catalog and that someone must
-  remember to extend. It also spreads goals across the board, which is a
-  better game.
-- It says nothing about non-corner conflicts. If two types ever contradict
-  each other *globally* this won't catch it — that wants a real
-  requirements algebra, judged over-engineered for a seven-entry catalog.
+Two decisions worth keeping:
 
-It can't bite: all four corner variants of every rung exist at the same
-cost, and 4 corners outnumber the 3 corner-scoped types, so any deal that
-would repeat a corner can be remapped instead of dropped. (Measured: 16,000
-deals across the four tiers, all spending exactly, none repeating a corner
-or a type.)
+- **It runs inside the search, not after it.** Generate-then-check-then-
+  reshuffle was the obvious shape and is worse: it gives up the
+  exhaustiveness the validator depends on, and it can spin forever on a
+  budget whose every exact-spend combination happens to conflict. As a
+  pruning predicate against the rows already chosen, an impossible deal is
+  never built in the first place and `null` still means infeasible.
+- **Sound but not complete, deliberately.** It refuses no winnable deal. It
+  reasons only about *pairs* and only about *containment*, so it cannot see
+  that three separate corner targets jointly want more words than a board
+  produces, and it says nothing about two overlapping-but-unrelated
+  properties being awkward together. Those want a real requirements algebra;
+  this is the part decidable from counts. Properties that merely overlap are
+  deliberately left unrelated in the lattice — only containments true by
+  definition are declared, which is what keeps it a small fixed table rather
+  than a conflict matrix that grows with the catalog.
 
-**These numbers have not been playtested.** Every `cost` and budget was
-chosen by reasoning about the scoring curve and how long a board survives,
-not by playing games. Two independent dials, both in `modes.js`: a row's
-`cost` (mispriced relative to its peers) and `POINT_BUDGETS` (the whole
-tier is too heavy or light). Repricing a row shifts every tier that can
-afford it at once — which is the point, but also means a mispriced row is
-felt across the board.
+Measured over 16,000 deals across the four tiers: all spend exactly, none
+repeat a family, none contain an incompatible pair. Corners stack up to five
+deep at Expert.
 
 ### The layers
-Five, each ignorant of the one above it:
+Six, each ignorant of the one above it:
 
 1. **`events.js` — the vocabulary.** The only coupling to the game.
    `main.js` emits at seven moments. Payloads are **denormalized on
    purpose**: every field an objective could want is on the event, so no
    objective ever reads `gameState` and the architecture rule holds.
-2. **`difficulty.js` — the tiers.** A tier is *only a name here*; what it's
+2. **`properties.js` — the property axis.** Predicates over a scored word,
+   plus the two things only the generator needs: a `rarity` estimate, and
+   the implication lattice the possibility check runs on.
+3. **`difficulty.js` — the tiers.** A tier is *only a name here*; what it's
    worth lives in `POINT_BUDGETS`, so the splash, the budget table and any
    future tier-dependent feature key off this independently. `null` is a
    legal value meaning "no tier, plain defaults". Unknown tiers throw, so a
    typo surfaces immediately rather than silently handing out the wrong
    tuning.
-3. **`definitions.js` — the catalog.** One entry per *type*, parameterized,
-   so "8 three-letter words" and "18" of them are one definition at two
-   tunings. Definitions are pure functions over `(progress, event, params)`
-   — no DOM, no state, no randomness, which is what makes replay safe.
-   Params resolve in two layers, defaults < the spec's own; **difficulty is
-   deliberately absent from this file.**
-4. **`tracker.js` — live objectives.** Turns plain-data specs into
+4. **`definitions.js` — the sentence.** The scope and constraint axes, and
+   the single composed definition all three axes instantiate. Pure functions
+   over `(progress, event, params)` — no DOM, no state, no randomness, which
+   is what makes replay safe. Params resolve in two layers, defaults < the
+   spec's own; **difficulty is deliberately absent from this file.**
+5. **`generator.js` — the pool and its price.** Enumerates the grid, prices
+   it, and owns `rowsIncompatible`. The whole balancing surface bar the
+   budgets.
+6. **`tracker.js` — live objectives.** Turns plain-data specs into
    instances with progress and status. Specs being plain JSON is what lets
    modes, the priced pool and (later) server-delivered objectives all be
    the same thing.
-5. **`modes.js` — what's in play and what ends the game.** Also owns the
-   whole balancing surface: `POINT_BUDGETS`, `OBJECTIVE_POOL`,
-   `exclusionKeys`, the selection search, and the module-load validator.
+7. **`modes.js` — what's in play and what ends the game.** `POINT_BUDGETS`,
+   `MAX_DEAL_SIZE`, the selection search, and the module-load validator.
 
 `runtime.js` glues them together and is the only thing `main.js` holds;
 `index.js` is the facade it imports from.
 
-Two definitions are **restrictive** — they can fail *before* the game would
-otherwise end, via an optional `failed()` hook checked ahead of the goal
-check. Since Objective mode ends the run the instant any objective fails, a
-restrictive objective failing mid-game is an instant loss with corners
-still open and other goals possibly nearly done. That's deliberate.
+A limit can fail *before* the game would otherwise end, via the `failed()`
+hook checked ahead of the goal check. Since Objective mode ends the run the
+instant any objective fails, a limit failing mid-game is an instant loss with
+corners still open and other goals possibly nearly done. That's deliberate.
 
-`cornerOnlyLength` is **not** enduring: once its count is reached with no
-violation it completes and freezes the normal way, so a wrong-length word
-*after* completion doesn't retroactively fail it — the obligation was
-already met. `cornerWordLimit` **is** enduring: surviving to game end
-without hitting the limit is the whole condition.
-
-`wordsStartingWithVowel` counts A/E/I/O/U — not Y — and a blank-derived
-opening letter counts like any other, since the event carries only the
-finished word. Its vowel set is a small local constant rather than
-`isVowel` from `letterSource.js`: that one exists to balance the *draw*,
-and importing it would make a definition depend on a game module. They
-agree today and are free to diverge.
+`startsWithVowel` / `endsWithVowel` count A/E/I/O/U — not Y — and a
+blank-derived letter counts like any other, since the event carries only the
+finished word. The vowel set is a small local constant rather than `isVowel`
+from `letterSource.js`: that one exists to balance the *draw*, and importing
+it would make a property depend on a game module. They agree today and are
+free to diverge.
 
 **Description markup:** a `describe()` string may wrap one word in
-`__like this__` to call it out, which `ui.js` renders as an underline. A
-cross-file contract between `definitions.js` and the renderer — worth
-knowing before writing a description containing literal underscores.
+`__like this__` to call it out, which `ui.js` renders as an underline. It is
+spent on the limit's "fewer"/"no": in a list where every other line asks for
+*more*, the inverted sense is the one thing worth making impossible to skim
+past. A cross-file contract between `definitions.js` and the renderer —
+worth knowing before writing a description containing literal underscores.
 
 ### Undo is a replay, not a reversal
 The decision everything else follows from. Making every objective implement
@@ -504,15 +606,14 @@ than silently replaying wrong.
 ### How a game ends
 - Completing **every** objective ends the game as a win immediately,
   corners still open (`endOnComplete`, default true).
-- **"Every objective" means every *target*.** Enduring objectives are
-  limits, not targets: they never report complete mid-game, so counting
-  them toward the win would mean a deal containing one could never be
-  cleared early — the player would grind the board closed with the limit
-  live throughout, where playing on can only lose a game already won. So
-  the evaluator wins when every non-enduring objective is complete and
-  nothing has failed; a limit being kept at that moment is a limit kept.
-  One guard: a deal of nothing but limits doesn't win on move zero for
-  doing nothing.
+- **"Every objective" means every *target*.** Limits are not targets: they
+  never report complete mid-game, so counting them toward the win would mean
+  a deal containing one could never be cleared early — the player would
+  grind the board closed with the limit live throughout, where playing on can
+  only lose a game already won. So the evaluator wins when every non-enduring
+  objective is complete and nothing has failed; a limit being kept at that
+  moment is a limit kept. One guard: a deal of nothing but limits doesn't win
+  on move zero for doing nothing.
 - All four corners closing first loses: unfinished objectives are marked
   failed and the verdict is `lost`.
 - With no objectives, `finish()` leaves the status `active` — an endless
@@ -541,67 +642,77 @@ leaves room for 2 — floored at 0, with no denominator, because the
 denominator was the part that read as a target. Red throughout, until the
 objective resolves and the ✓-green / ✗-red take over.
 
-Both homes share `progressText` in `ui.js`, which is what keeps the flag
-and the panel saying the same thing. They differ in one word: the panel
-prints "2 left", since a lone number carries no scale, and the corner flag
-prints "2", since ~30px of badge on a 320px screen has no room for the
-caption. That caption is its own element (`.objective-progress-unit`) and
-is deliberately **smaller than the number** — at the number's size it
-widens the column past the ~1px of slack a 320px panel row has, and the
-description wraps to two lines.
+The panel prints "2 left" rather than a bare "2", since a lone number
+carries no scale. That caption is its own element
+(`.objective-progress-unit`) and is deliberately **smaller than the
+number** — at the number's size it widens the column past the ~1px of slack
+a 320px panel row has, and the description wraps to two lines.
 
 A time limit (`limits.seconds`) would additionally need a UI ticker calling
 `objectives.tick()`; otherwise the limit is only noticed when the next
 event arrives.
 
 ### The corner flags
-A corner-scoped objective gets a **second home**: a small flag with a live
-counter, sitting in the center band just inside the tile it belongs to —
-below the north tiles, above the south ones — which taps open to a popover
-showing that one objective. The right-edge flag still owns the whole deal;
-this puts a corner's goal *at* the corner, where the decision about that
-corner is being made.
+A corner with any objectives on it gets a small flag in the center band just
+inside its tile — below the north tiles, above the south ones — which taps
+open to a popover listing **every** objective on that corner. The right-edge
+flag still owns the whole deal; this puts a corner's goals *at* the corner,
+where the decision about that corner is being made.
 
-- **`params.corner` is the only signal, again.** The same convention the
-  objective list's shape column uses, so a future corner-scoped type is
-  covered with no work here. The one-objective-per-corner rule is what
-  makes the flag-to-objective mapping 1:1 by construction — if that rule
-  ever goes, this UI needs an answer for two flags on one corner.
+- **The flag is only an icon.** It used to carry a live counter, which
+  worked exactly as long as the selector guaranteed one objective per
+  corner. With a corner able to hold five, there is no single number to
+  print and nowhere to print several — the strip is ~38px tall on a 320px
+  screen. So the flag says "there are goals here", and every number lives in
+  the popover. The one thing it still signals is whether the corner is
+  finished with: teal when all its objectives resolved complete, rose if any
+  failed, neutral while any is live. Failed beats complete — one blown
+  objective is the headline however many others were met.
 - **They hug the outer screen edges.** The center row can be ~299px wide on
   a 320px screen, so the edges are the only horizontal space reliably free;
   the flags also clear the row vertically, in a strip that is ~38px tall on
   that same phone. That is what caps `--corner-flag-height`, and why
   `--north-band-top` / `--south-band-bottom` are shared variables — the
-  flags and `#center-stack` must be measured from the same line.
+  flags and `#center-stack` must be measured from the same line. With the
+  counter gone the flag is a circle, sized off that height alone.
 - **Outside `.corner`, not inside it.** A tile sets `z-index: 1` and so is
   its own stacking context: a child flag could never rise above
   `#center-stack`, and a click inside a tile submits its word.
-- The popover **reuses `renderObjectiveList` with a single-item array**, so
-  a goal reads identically wherever the player meets it, and its backdrop
-  is doing two jobs — the dismiss affordance, and keeping that tap off the
-  board. It re-renders from every snapshot while open, so progress shows
-  without closing it.
-- A resolved objective's flag **stays**, going teal ✓ or rose ✗ while still
-  printing its counter: "1/3" beside a ✗ says how far it got. (A resolved
-  *limit* keeps its countdown, so it says only "0 left" — how far it got is
-  the one thing that reading loses.)
+- The popover **reuses `renderObjectiveList`**, so a goal reads identically
+  wherever the player meets it, and its backdrop is doing two jobs — the
+  dismiss affordance, and keeping that tap off the board. It re-renders from
+  every snapshot while open, so progress shows without closing it. It is
+  capped at `46vh` and scrolls: anchored at either flag strip that clears the
+  opposite edge on a 320×568 screen, and a corner can now draw enough
+  objectives to need it.
+- A resolved objective's row **stays** in the popover, going teal ✓ or rose
+  ✗ while still printing its counter: "1/3" beside a ✗ says how far it got.
+  (A resolved *limit* keeps its countdown, so it says only "0 left" — how far
+  it got is the one thing that reading loses.)
 
 ### Recording objective results
 Every finished game stores one `game_objectives` row per objective dealt,
-so **the costs and budgets above can be tuned from data rather than
-reasoning** — that is the whole reason the table exists. `npm run
-db:objectives` runs the rollup. A tuning near 100% is priced too cheap for
-what it asks, one near 0% too dear. The sharper read is **across rows
-sharing a `cost`**: they're interchangeable to the selector, so where their
-rates diverge, that rung is mixing easy and hard work and some deals at
-that tier are far worse than others.
+so **the cost model above can be tuned from data rather than reasoning** —
+that is the whole reason the table exists, and it matters more now that nine
+constants price hundreds of combinations instead of forty rows pricing
+themselves. `npm run db:objectives` runs the per-tuning rollup; `npm run
+db:costs` runs the one that matters most for pricing.
+
+A tuning near 100% is priced too cheap for what it asks, one near 0% too
+dear. The sharper read is **across rows sharing a `cost`**: they're
+interchangeable to the selector, so where their rates diverge, that rung is
+mixing easy and hard work and some deals at that tier are far worse than
+others. Because the axes are now stored as separate fields, a whole
+*property* or a whole *constraint* can be read down a column — if every
+`endsWithVowel` row underperforms, its `rarity` is wrong, and one number
+fixes every objective built on it.
 
 Three load-bearing decisions there:
 
-- **Grouping is by *tuning*, not type.** Only the price is being tuned, so
-  `params` is stored as canonical JSON with **keys sorted** (two clients
-  serializing the same tuning must land in the same group) and
-  `(type, params)` is the group.
+- **Grouping is by *tuning*, not type.** `type` is a constant now that every
+  objective comes from the same composed definition, so the rollup groups on
+  `params` — stored as canonical JSON with **keys sorted**, since two clients
+  serializing the same tuning must land in the same group.
 - **`final_value` is raw, not clamped to the goal.** How far *past* its
   goal a completed objective ran is what separates "demanding" from "the
   player would have hit that anyway" — completed at 24/9 was never really
@@ -614,12 +725,16 @@ Three load-bearing decisions there:
 Objective game ends the moment its goals are met, so its score measures
 *when it stopped*, not how well it went — ranking it would reward picking a
 tier you can't finish, and would let one mode's scores drown the other's.
-The score is still recorded, because next to a `totalScore` goal it's
-useful tuning data; it just isn't a leaderboard entry.
+The score is still recorded, because it is useful tuning data; it just isn't
+a leaderboard entry.
 
 Note the live mode's `id` is the table row's id unsuffixed (`objective`,
 not `objective-hard`) — the tier is in `difficulty` beside it, so every
 Objective game groups without a `LIKE`.
+
+Rows written before `GAME_VERSION` 0.12.0 are a **separate cohort**: they
+carry the old bespoke types (`wordsOfLength`, `totalScore`, `cornerWordLimit`
+…) and are not comparable with generated ones. Slice by `game_version`.
 
 ## Backend
 One Worker serves both `public/` and the API on the same origin — so no
@@ -711,11 +826,14 @@ and internal changes don't need one. Keep it in step with `version` in
 `package.json`.
 
 ## Not yet built (ask before assuming scope)
-- **Playtesting the costs and budgets.** Every number is still a first-pass
-  guess. The data *is* now being collected, so this waits on played games
-  rather than plumbing. Watch whether rows sharing a cost really are
-  comparable work. Nothing retunes the pool automatically, and nothing
-  should — read the rates, then edit by hand.
+- **Playtesting the cost model.** The nine constants have had exactly one
+  round of correction, against a scripted player rather than a human — see
+  "The cost model". Two known-suspect numbers: `LENGTH_SHARE` for 4+ letters
+  (the script never makes long words, so it couldn't measure them) and the
+  `STEERING` factor on the two vowel properties (never measured at all).
+  This waits on played games rather than plumbing. Watch whether rows
+  sharing a cost really are comparable work. Nothing retunes the pool
+  automatically, and nothing should — read the rates, then edit by hand.
 - **Saying anything about a tier beyond its name.** The buttons are bare
   labels. They briefly carried a deal-size range, which was removed: the
   ranges overlap badly and widen with every type added, so they
@@ -724,8 +842,18 @@ and internal changes don't need one. Keep it in step with `version` in
   the things worth trying.
 - **Remembering the player's choice.** The splash asks every game; nothing
   persists the last mode/difficulty. Undecided.
-- **More objectives and modes.** The catalog was deliberately emptied once;
-  add entries as modes need them rather than pre-seeding content tables.
+- **More properties and modes.** Adding a property is now the cheap,
+  high-leverage move — one entry in `properties.js` yields its whole column
+  of objectives. Candidates the axes already support: contains a given
+  letter, double letter, no repeated letter. Each needs a `rarity` estimate
+  and a decision about where (if anywhere) it sits in the implication
+  lattice; a property that implies nothing and is implied by nothing but
+  `any` is the easy case and needs no lattice work at all.
+- **A soft cap on objectives per corner.** Deliberately absent for now: the
+  possibility check keeps a stack coherent, and unlimited stacking is worth
+  playing before deciding it's too much. Deals put 3+ on one corner about
+  12% of the time and 4+ about 1%. If it reads as crowded, a cap belongs in
+  the selector's pruning predicate, not in the generator.
 - **A losing game-over screen that explains itself.** Nothing distinguishes
   "the board closed on you" from "you failed an objective outright"; the
   verdict's `reason` is in the snapshot for whoever wants to word it.

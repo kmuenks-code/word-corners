@@ -243,7 +243,8 @@ export function pulseObjectiveFlag(flagEl) {
 // number rather than `n/goal` — the denominator is exactly what made a
 // limit read as something to build toward — captioned "left" where there's
 // room for the word. Shown in red wherever it appears (see
-// `.objective-row.enduring` and `.corner-flag-badge.limit` in the CSS).
+// `.objective-row.enduring` in the CSS). The corner flag no longer prints a
+// counter at all, so the panel and the corner popover are its two homes.
 // Zero means "no more words here", not failure — the failure is the word
 // after it, and by then the objective is FAILED and styled as such.
 function limitRemaining(objective) {
@@ -290,8 +291,7 @@ function renderObjectiveDescription(el, text) {
 export function renderObjectiveList(listEl, objectives) {
   listEl.innerHTML = '';
   objectives.forEach((objective) => {
-    const { status, description, current, goal, enduring } = objective;
-    const corner = objective.params?.corner ?? null;
+    const { status, description, current, goal, enduring, corner = null } = objective;
     const item = document.createElement('li');
     item.className = `objective-row ${status}${enduring ? ' enduring' : ''}`;
 
@@ -300,10 +300,10 @@ export function renderObjectiveList(listEl, objectives) {
     mark.setAttribute('aria-hidden', 'true');
     mark.textContent = status === 'complete' ? '✓' : status === 'failed' ? '✗' : '';
 
-    // Which corner an objective is bound to reads off its resolved params
-    // — no objective type has to declare itself "corner-scoped", the param
-    // being there is the whole signal. The cell is emitted either way so a
-    // corner-free objective ("Score 13 words") leaves a blank gutter and
+    // Which corner an objective is bound to is resolved once, in the
+    // snapshot (see snapshotObjectives in objectives/tracker.js), so nothing
+    // here has to know how a scope is spelled. The cell is emitted either
+    // way so a global objective ("Score 13 words") leaves a blank gutter and
     // every description still starts at the same x.
     const symbol = document.createElement('span');
     symbol.className = 'objective-symbol';
@@ -346,6 +346,13 @@ export function renderObjectiveList(listEl, objectives) {
 // names. Every flag starts hidden — renderCornerObjectiveFlag shows only
 // the ones a deal actually bound to a corner. Returns them as a
 // corner-keyed Map, since the caller renders each one by name.
+//
+// The flag is **just the icon**. It used to carry a live counter, which
+// worked only while the selector guaranteed one objective per corner; now
+// that a corner can hold several, there is no single number to print and no
+// room to print several — the strip is about 38px tall on a 320px screen.
+// So the flag says only "there are goals here, tap to see them", and the
+// popover it opens carries the whole list.
 const CORNER_FLAG_ICON =
   '<svg class="corner-flag-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" ' +
   'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
@@ -362,33 +369,30 @@ export function buildCornerFlags(containerEl, corners) {
     btn.dataset.corner = corner;
     btn.hidden = true;
     // Named by shape, like everywhere else a corner is spoken about.
-    btn.setAttribute('aria-label', `${cornerShapeLabel(corner)} corner objective`);
-    btn.innerHTML =
-      `${CORNER_FLAG_ICON}<span class="corner-flag-mark" aria-hidden="true"></span>` +
-      '<span class="corner-flag-badge"></span>';
+    btn.setAttribute('aria-label', `${cornerShapeLabel(corner)} corner objectives`);
+    btn.innerHTML = CORNER_FLAG_ICON;
     containerEl.appendChild(btn);
     flags.set(corner, btn);
   });
   return flags;
 }
 
-// One flag's whole state, from the objective bound to that corner — or
-// `null`, which hides it (an Endless game, or a corner this deal made no
-// demands of). The counter follows the objective list's convention
-// (progressText): a red countdown for an `enduring` limit, `n/goal` for a
-// target.
-export function renderCornerObjectiveFlag(flagEl, objective) {
-  flagEl.hidden = !objective;
-  if (!objective) return;
+// One flag's whole state, from *every* objective bound to that corner — an
+// empty array hides it (an Endless game, or a corner this deal made no
+// demands of).
+//
+// With no counter left to show, the only thing the flag still says beyond
+// "look here" is whether this corner is finished with. `failed` wins over
+// `complete`, since one blown objective is the headline however many others
+// were met, and a corner with anything still live stays neutral.
+export function renderCornerObjectiveFlag(flagEl, objectives) {
+  flagEl.hidden = objectives.length === 0;
+  if (objectives.length === 0) return;
 
-  const { status, enduring } = objective;
-  flagEl.classList.toggle('complete', status === 'complete');
-  flagEl.classList.toggle('failed', status === 'failed');
-  flagEl.querySelector('.corner-flag-mark').textContent =
-    status === 'complete' ? '✓' : status === 'failed' ? '✗' : '';
-  const badge = flagEl.querySelector('.corner-flag-badge');
-  badge.classList.toggle('limit', enduring);
-  badge.textContent = progressText(objective);
+  const failed = objectives.some((o) => o.status === 'failed');
+  const settled = objectives.every((o) => o.status !== 'active');
+  flagEl.classList.toggle('failed', failed);
+  flagEl.classList.toggle('complete', settled && !failed);
 }
 
 // Same "something actually moved" bump as the right-edge flag's.

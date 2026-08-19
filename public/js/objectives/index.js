@@ -20,6 +20,11 @@ export {
   feasibleDealSizes,
 } from './modes.js';
 export { ObjectiveStatus } from './tracker.js';
+// The generative layer, for tooling that wants to inspect or re-price the
+// objective space rather than play it: what the axes are, and what any one
+// combination costs.
+export { buildObjectivePool, costOf, rawCost, rowsIncompatible } from './generator.js';
+export { listPropertyTunings } from './properties.js';
 export {
   Difficulty,
   DEFAULT_DIFFICULTY,
@@ -28,4 +33,4 @@ export {
   isDifficulty,
   listDifficulties,
 } from './difficulty.js';
-export { listDefinitions, describeSpec } from './definitions.js';
+export { listDefinitions, describeSpec, CORNERS, SCOPES, Constraint } from './definitions.js';

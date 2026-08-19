@@ -1000,13 +1000,17 @@ body.game-over #objective-flag {
   pointer-events: none;
 }
 
+/* A circle, not a pill: with the counter gone the icon is the only thing in
+   here, so the width follows the height instead of padding out around a
+   number of unknown length. */
 .corner-flag {
   position: absolute;
   display: inline-flex;
   align-items: center;
-  gap: clamp(3px, 1vw, 5px);
+  justify-content: center;
+  width: var(--corner-flag-height);
   height: var(--corner-flag-height);
-  padding: 0 clamp(7px, 2.2vw, 10px);
+  padding: 0;
   border: none;
   border-radius: 999px;
   background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
@@ -1052,40 +1056,6 @@ body.game-over #objective-flag {
   height: clamp(11px, 3.2vw, 14px);
 }
 
-/* Swapped in for the flag glyph once the objective resolves, matching the
-   ✓/✗ the objective list uses. The counter stays either way — "1/3" next
-   to a ✗ says how far it got. */
-.corner-flag-mark {
-  display: none;
-  font-size: clamp(0.68rem, 2.6vw, 0.85rem);
-  font-weight: 800;
-  line-height: 1;
-}
-
-.corner-flag.complete .corner-flag-icon,
-.corner-flag.failed .corner-flag-icon {
-  display: none;
-}
-
-.corner-flag.complete .corner-flag-mark,
-.corner-flag.failed .corner-flag-mark {
-  display: block;
-}
-
-.corner-flag-badge {
-  font-size: clamp(0.58rem, 2.2vw, 0.7rem);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  line-height: 1;
-}
-
-/* Same red countdown as the panel's, but only while the objective is live:
-   a resolved flag repaints its whole background (teal or rose below) and
-   the badge has to stay legible against it. */
-.corner-flag:not(.complete):not(.failed) .corner-flag-badge.limit {
-  color: #C4584F;
-}
-
 .corner-flag:active {
   transform: translateY(2px);
   box-shadow:
@@ -1094,7 +1064,11 @@ body.game-over #objective-flag {
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-/* Done: teal, like the right-edge flag's all-complete state. */
+/* Done: teal, like the right-edge flag's all-complete state. The flag holds
+   no counter of its own any more — a corner can carry several objectives and
+   there is no room for several numbers — so these two states are the whole
+   of what it says beyond "there are goals here". Every number lives in the
+   popover it opens. */
 .corner-flag.complete {
   background: radial-gradient(circle at 30% 22%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
   color: var(--text-light);
@@ -1145,10 +1119,18 @@ body.game-over #corner-flags {
 
 /* Anchored to the flag that opened it: on the same edge, immediately inside
    it. It reaches across the center row, which is fine — the backdrop has
-   already taken the board out of play. */
+   already taken the board out of play.
+
+   The card used to hold exactly one objective, because the selector dealt at
+   most one per corner. It now holds however many that corner drew — up to
+   the whole deal — so it needs a ceiling. 46vh keeps a card anchored at
+   either flag strip clear of the opposite edge on a 320x568 screen; past
+   that it scrolls rather than running off the board. */
 #corner-popover-card {
   position: absolute;
   width: min(78%, 272px);
+  max-height: 46vh;
+  overflow-y: auto;
   padding: 15px 17px;
   background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
   border-radius: 18px;

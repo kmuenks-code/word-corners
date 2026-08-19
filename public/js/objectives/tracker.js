@@ -5,9 +5,9 @@
 // A *spec* is the plain-data form an objective is authored in, so a game
 // mode's objective list — and the priced pool it may be drawn from — is
 // just JSON:
-//   { type: 'wordsOfLength', params: { length: 3, exact: true, count: 8 } }
-//   { type: 'wordsOfLength', params: { length: 7 }, id: 'big-word',
-//     description: 'Land one seven-letter monster' }
+//   { type: 'composed',
+//     params: { property: 'lengthExactly', length: 3,
+//               scope: 'global', constraint: 'atLeast', count: 8 } }
 // `params` may be partial — the definition's defaults fill the rest (see
 // resolveParams in definitions.js). `id` and `description` are optional
 // overrides. A pool row additionally carries `cost`, which matters to the
@@ -18,7 +18,7 @@
 //
 // An *instance* adds the resolved params plus mutable progress/status.
 
-import { getDefinition, resolveParams } from './definitions.js';
+import { getDefinition, resolveParams, scopeCorner } from './definitions.js';
 
 export const ObjectiveStatus = Object.freeze({
   ACTIVE: 'active',
@@ -46,7 +46,10 @@ export function instantiateObjectives(specs = []) {
       definition,
       description: spec.description ?? definition.describe(params),
       goal: definition.goal(params),
-      enduring: definition.enduring === true,
+      // Whether an objective is a limit or a target is now the constraint
+      // axis rather than a fact about its type, so `enduring` is a function
+      // of params (see definitions.js).
+      enduring: definition.enduring?.(params) === true,
       progress: definition.initial(params),
       status: ObjectiveStatus.ACTIVE,
     };
@@ -120,11 +123,17 @@ export function finalizeObjectives(objectives) {
 // HUD: a success rate is only meaningful per *tuning*, so "8 three-letter
 // words" has to be distinguishable from "18" of them in the stored row.
 // params values are primitives, so a shallow copy is a full one.
+//
+// `corner` is derived once here rather than in each renderer. It used to be
+// read straight off `params.corner` by both the objective list and the
+// corner flags; with scope now an axis in its own right, resolving it in one
+// place keeps the UI from having to know how a scope is spelled.
 export function snapshotObjectives(objectives) {
   return objectives.map((objective) => ({
     id: objective.id,
     type: objective.type,
     params: { ...objective.params },
+    corner: scopeCorner(objective.params.scope),
     cost: objective.cost,
     description: objective.description,
     current: currentValue(objective),

@@ -242,20 +242,16 @@ function renderObjectiveState(view = objectives.snapshot()) {
   });
   renderObjectiveList(objectiveListEl, list);
 
-  // A corner-scoped objective gets a second home, on a flag beside the tile
-  // it belongs to. `params.corner` is the only signal that an objective is
-  // corner-scoped — the same convention the objective list's shape column
-  // uses — and the selector deals at most one objective per corner, so this
-  // lookup is one-to-one by construction (see "One objective per corner").
-  const byCorner = new Map();
-  list.forEach((objective) => {
-    const corner = objective.params?.corner;
-    if (corner) byCorner.set(corner, objective);
-  });
+  // Corner-scoped objectives get a second home, on a flag beside the tile
+  // they belong to. A corner can now hold any number of them, so this is a
+  // grouping rather than the one-to-one lookup it used to be — the selector
+  // no longer limits a corner to one goal, and the possibility check is what
+  // keeps a stack of them coherent (see generator.js).
+  const byCorner = groupByCorner(list);
   cornerFlagEls.forEach((flagEl, corner) => {
-    const objective = byCorner.get(corner) ?? null;
-    renderCornerObjectiveFlag(flagEl, objective);
-    const signature = objective ? `${objective.current}:${objective.status}` : '';
+    const forCorner = byCorner.get(corner) ?? [];
+    renderCornerObjectiveFlag(flagEl, forCorner);
+    const signature = forCorner.map((o) => `${o.current}:${o.status}`).join('|');
     if (signature !== lastCornerSignatures[corner]) {
       // An absent previous signature is this game's first render, which is
       // no more progress than the whole-board flag's first render is.
@@ -264,12 +260,12 @@ function renderObjectiveState(view = objectives.snapshot()) {
     }
   });
 
-  // An open popover tracks its objective live, so progress shows without
-  // closing and reopening it. If that objective is gone — a new deal — the
-  // popover has nothing left to show.
+  // An open popover tracks its objectives live, so progress shows without
+  // closing and reopening it. If they're gone — a new deal — the popover has
+  // nothing left to show.
   if (openFlagCorner) {
-    const objective = byCorner.get(openFlagCorner);
-    if (objective) renderObjectiveList(cornerPopoverListEl, [objective]);
+    const forCorner = byCorner.get(openFlagCorner) ?? [];
+    if (forCorner.length > 0) renderObjectiveList(cornerPopoverListEl, forCorner);
     else closeCornerPopover();
   }
 
@@ -285,21 +281,33 @@ function renderObjectiveState(view = objectives.snapshot()) {
   }
 }
 
-// Tapping a corner flag opens that one objective beside it; tapping again
-// (or anywhere else) closes it. Like the flag panel it reads only from a
-// snapshot, and it renders through the same list renderer, so a corner's
-// goal reads identically wherever the player meets it.
+// Every objective bound to a corner, keyed by corner. `corner` is resolved
+// in the snapshot rather than dug out of params here, so this doesn't have
+// to know that a global objective's scope is spelled 'global'.
+function groupByCorner(list) {
+  const byCorner = new Map();
+  list.forEach((objective) => {
+    if (!objective.corner) return;
+    if (!byCorner.has(objective.corner)) byCorner.set(objective.corner, []);
+    byCorner.get(objective.corner).push(objective);
+  });
+  return byCorner;
+}
+
+// Tapping a corner flag opens that corner's objectives beside it; tapping
+// again (or anywhere else) closes it. Like the flag panel it reads only from
+// a snapshot, and it renders through the same list renderer, so a goal reads
+// identically wherever the player meets it — which is now the only place a
+// corner objective's progress can be read without opening the main panel.
 function toggleCornerPopover(corner) {
   if (openFlagCorner === corner) {
     closeCornerPopover();
     return;
   }
-  const objective = objectives
-    .snapshot()
-    .objectives.find((o) => o.params?.corner === corner);
-  if (!objective) return;
+  const forCorner = groupByCorner(objectives.snapshot().objectives).get(corner) ?? [];
+  if (forCorner.length === 0) return;
   openFlagCorner = corner;
-  renderObjectiveList(cornerPopoverListEl, [objective]);
+  renderObjectiveList(cornerPopoverListEl, forCorner);
   showCornerPopover(cornerPopoverEl, corner);
 }
 

@@ -1,216 +1,152 @@
-// The catalog of objective *types*. Everything the game can ask a player
-// to do is one entry here, parameterized — "score 8 three-letter words" and
-// "score 20 three-letter words" are the same definition with different
-// params, and it is the *pool* (modes.js) that decides which tunings exist
-// and what each is worth.
+// The objective catalog — which is now a *shape* rather than a list.
 //
-// Definitions are pure functions over `(progress, event, params)` — no DOM,
-// no game state, no randomness — which is what makes replay (see runtime.js)
-// and serialization safe.
+// Every objective the game can set is one sentence with three blanks:
 //
-// A definition is:
+//     Score {constraint} {count} {property} {in scope}
+//
+//   property    which scored words count      (properties.js)
+//   scope       where they have to land       — global, or one corner
+//   constraint  which way the count is read   — at least N, or fewer than N
+//
+// Those three axes are enumerated and priced in generator.js; this file is
+// the single definition they all instantiate. There is deliberately no
+// second, hand-written definition and no escape hatch for one: an objective
+// that can't be said in this sentence doesn't exist, which is what makes the
+// space enumerable, priceable, and checkable for contradictions. The former
+// catalog of seven bespoke types is gone, and with it `cornerOnlyLength`
+// (a conjunction, unsayable here) and `totalScore` (measured in points, not
+// words).
+//
+// The definition contract, unchanged except where noted:
 //   id          stable string key, used in specs and any stored data
-//   label       short human name for a future objective editor
-//   defaults    the full parameter set, with sensible values. A spec only
-//               has to state what it changes.
-//   describe    (params) -> plain-text goal, e.g. "Score 8 3-letter words"
-//   goal        (params) -> the number `measure` is climbing toward
-//   initial     (params) -> starting progress (any JSON-serializable value)
+//   label       short human name
+//   defaults    the full parameter set; a spec states only what it changes
+//   describe    (params) -> plain-text goal
+//   goal        (params) -> the number `measure` is compared against
+//   initial     (params) -> starting progress
 //   advance     (progress, event, params) -> next progress. Pure.
-//   measure     (progress, params) -> number, compared against goal
-//   enduring    optional; true = can't be completed early, only survived.
-//               Resolves to complete at game end if it hasn't failed.
-//               For these, `goal` reads as a *limit* rather than a target.
-//   failed      optional; (progress, params) -> true to fail immediately
+//   measure     (progress, params) -> number
+//   enduring    (params) -> boolean. NOW A FUNCTION of params, because
+//               whether an objective is a limit or a target is the
+//               constraint axis rather than a property of the type.
+//   failed      (progress, params) -> true to fail immediately
 //
-// Difficulty is deliberately absent here. An objective's numbers are fixed
-// by its spec; how *hard* a given tuning is gets expressed as a `cost` on
-// the pool row, and a difficulty tier is a budget of those costs. See
-// "Objectives" in CLAUDE.md.
+// Difficulty is still deliberately absent here. An objective's numbers are
+// fixed by its params; how *hard* a given combination is comes out of the
+// cost model in generator.js, and a difficulty tier is a budget of costs.
 
-import { GameEvent } from './events.js';
+import { propertyMatches, propertyNoun } from './properties.js';
 
-// A corner-scoped objective's description deliberately does NOT name its
-// corner. The corner is shown as its shape (see js/cornerSymbols.js), in a
-// leading column the renderer fills from `params.corner` — "◆  Clear 5
-// words" rather than "Clear 5 words in the SE corner". So these strings
-// describe only the task, and read as if the shape were their subject.
-// Nothing here knows what the shapes are; that stays in the UI layer.
+// The scope axis. `global` counts words anywhere on the board; a corner
+// scope counts only words scored in that corner. Corner ids stay nw/ne/sw/se
+// throughout the data model — the player is shown a shape instead (see
+// js/cornerSymbols.js), but renaming them would have split every corner
+// tuning's recorded history in two for a purely visual change.
+export const GLOBAL_SCOPE = 'global';
+export const CORNERS = Object.freeze(['nw', 'ne', 'sw', 'se']);
+export const SCOPES = Object.freeze([GLOBAL_SCOPE, ...CORNERS]);
 
-function plural(count, noun) {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+// Which corner an objective is bound to, or null for a global one. The
+// snapshot carries this so no renderer has to know how scope is spelled.
+export function scopeCorner(scope) {
+  return scope === GLOBAL_SCOPE ? null : scope;
 }
 
-// Most objectives are "count the events that match a predicate until you
-// hit a number", so that case gets a one-liner. `amount` lets an event
-// contribute more than 1 (points, for instance).
-function counting({
-  id,
-  label,
-  defaults,
+// `a ⊆ b` for scopes: a corner is inside global, and inside itself. Corners
+// are disjoint from each other. The counterpart of propertySubsumes, and the
+// other half of the possibility check.
+export function scopeSubsumes(a, b) {
+  return a === b || b === GLOBAL_SCOPE;
+}
+
+// The constraint axis.
+//
+// AT_LEAST is a target: reaching `count` completes it, and it can complete
+// early, which is what lets a deal be won with corners still open.
+//
+// FEWER_THAN is a limit: it fails the moment the count reaches `count`, and
+// it can never complete early — surviving to game end *is* the condition, so
+// it is `enduring`. Limits are generated for corner scopes only (see
+// generator.js); a global "score fewer than N words" would fight the entire
+// board rather than ask anything of a place on it.
+//
+// There is no EXACTLY. It would have to stay live to game end like a limit
+// while also being a target, so any deal containing one could only ever be
+// won by playing the board all the way closed — a third status shape for
+// something at-least and fewer-than already express between them.
+export const Constraint = Object.freeze({
+  AT_LEAST: 'atLeast',
+  FEWER_THAN: 'fewerThan',
+});
+
+export const CONSTRAINTS = Object.freeze([Constraint.AT_LEAST, Constraint.FEWER_THAN]);
+
+// The head noun of every property phrase is "word", so pluralizing means
+// touching that one token rather than appending to the end — "word of 6+
+// letters" becomes "words of 6+ letters", not "word of 6+ letterss".
+function pluralizeNoun(noun) {
+  return noun.replace(/\bword\b/, 'words');
+}
+
+function nounFor(params, count) {
+  const noun = propertyNoun(params);
+  return count === 1 ? noun : pluralizeNoun(noun);
+}
+
+// A description never names its corner: the renderer draws the corner as a
+// shape in a leading column, so these strings describe only the task and
+// read as if the shape were their subject. That means the four per-corner
+// variants of one tuning describe identically, and anything identifying a
+// row by its text has to add the scope back (the pool validator does).
+//
+// The `__word__` emphasis marker (rendered as an underline by ui.js) is
+// spent on the limit's "fewer"/"no". In a list where every other line asks
+// the player to score *more*, the inverted sense is the one thing worth
+// making impossible to skim past.
+function describe(params) {
+  const { constraint, count } = params;
+  if (constraint === Constraint.FEWER_THAN) {
+    return count === 1
+      ? `Score __no__ ${pluralizeNoun(propertyNoun(params))}`
+      : `Score __fewer__ than ${count} ${nounFor(params, count)}`;
+  }
+  return count === 1
+    ? `Score a ${nounFor(params, 1)}`
+    : `Score ${count} or more ${nounFor(params, count)}`;
+}
+
+// A word counts when it matches the property *and* landed in scope. Scope is
+// checked here rather than in the property so that every property works at
+// every scope for free — which is the entire point of the two being separate
+// axes.
+function countsFor(event, params) {
+  if (params.scope !== GLOBAL_SCOPE && event.corner !== params.scope) return false;
+  return propertyMatches(params, event);
+}
+
+const composed = Object.freeze({
+  id: 'composed',
+  label: 'Composed objective',
+  defaults: Object.freeze({
+    property: 'any',
+    scope: GLOBAL_SCOPE,
+    constraint: Constraint.AT_LEAST,
+    count: 5,
+  }),
   describe,
-  goal = (params) => params.count,
-  matches,
-  amount = () => 1,
-}) {
-  return Object.freeze({
-    id,
-    label,
-    defaults,
-    describe,
-    goal,
-    initial: () => 0,
-    advance: (progress, event, params) =>
-      matches(event, params) ? progress + amount(event, params) : progress,
-    measure: (progress) => progress,
-  });
-}
-
-// Words of one exact length (or a minimum, with `exact: false`). `length`
-// and `exact` are params rather than baked in, so 3-, 4- and 5-letter hunts
-// are all this one definition at different tunings.
-const wordsOfLength = counting({
-  id: 'wordsOfLength',
-  label: 'Words of a given length',
-  defaults: { count: 8, length: 3, exact: true },
-  describe: (p) =>
-    p.exact
-      ? `Score ${plural(p.count, `${p.length}-letter word`)}`
-      : `Score ${plural(p.count, 'word')} of ${p.length}+ letters`,
-  matches: (event, p) =>
-    event.type === GameEvent.WORD_SCORED &&
-    (p.exact ? event.length === p.length : event.length >= p.length),
-});
-
-// Total words cleared, any length. The objective that never fights the
-// others, since every scoring submission advances it too.
-const words = counting({
-  id: 'words',
-  label: 'Words scored',
-  defaults: { count: 9 },
-  describe: (p) => `Score ${plural(p.count, 'word')}`,
-  matches: (event) => event.type === GameEvent.WORD_SCORED,
-});
-
-// Words whose first letter is a vowel. Deliberately its own small set here
-// rather than importing isVowel() from js/letterSource.js: that one exists to
-// balance the letter *draw*, and a definition that reaches outside this
-// directory stops being a pure function over (progress, event, params). Y is
-// not a vowel for either purpose, so the two agree today and are free to
-// diverge if the draw ever needs them to.
-const INITIAL_VOWELS = new Set(['A', 'E', 'I', 'O', 'U']);
-
-// Only the first letter matters, and a blank-derived letter counts the same
-// as a drawn one — the event carries the finished word, not where its
-// letters came from.
-function startsWithVowel(word) {
-  return typeof word === 'string' && INITIAL_VOWELS.has(word.charAt(0).toUpperCase());
-}
-
-// Vowel-initial words. Pulls against the natural shape of a corner: the
-// player picks which corner a letter opens, so this is really "spend early
-// letters on vowels", paid for later when the corner needs consonants.
-const wordsStartingWithVowel = counting({
-  id: 'wordsStartingWithVowel',
-  label: 'Words starting with a vowel',
-  defaults: { count: 6 },
-  describe: (p) => `Score ${plural(p.count, 'word')} starting with a vowel`,
-  matches: (event) => event.type === GameEvent.WORD_SCORED && startsWithVowel(event.word),
-});
-
-// Points rather than words, so it rewards long words instead of many.
-// Scoring is superlinear (n*(n-1)/2 — a 3-letter word is 3 points, a
-// 6-letter word is 15), which is why the pool's high tunings climb steeply.
-const totalScore = counting({
-  id: 'totalScore',
-  label: 'Total score',
-  defaults: { points: 75 },
-  goal: (p) => p.points,
-  describe: (p) => `Score ${p.points} points`,
-  matches: (event) => event.type === GameEvent.WORD_SCORED,
-  amount: (event) => event.points,
-});
-
-// Pins the player to one corner, which pulls against the others — the
-// corner it names can also close on them.
-const wordsInCorner = counting({
-  id: 'wordsInCorner',
-  label: 'Words in one corner',
-  defaults: { count: 3, corner: 'nw' },
-  describe: (p) => `Score ${plural(p.count, 'word')}`,
-  matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
-});
-
-// ---------------------------------------------------------------------
-// Restrictive objectives: a constraint that can fail mid-game, not just
-// a target that runs out of time. Both use `failed` — the only two
-// definitions that do, so far — which `applyEventToObjective` (tracker.js)
-// checks on every event, ahead of the normal goal check. In Objective mode
-// (`endOnFailure: true` by default) a `failed` objective ends the run on
-// the spot, on whatever move triggered it — these are the first objectives
-// where that's a real, reachable outcome rather than something only
-// finalizeObjectives produces at game end.
-// ---------------------------------------------------------------------
-
-// Land `count` words of exactly `length` in `corner` — and nothing else
-// there, ever. Not `enduring`: once `count` is reached with no violation,
-// it resolves COMPLETE and freezes (the standard goal-reached path in
-// tracker.js's resolveStatus), so a wrong-length word in that corner
-// *after* completion doesn't undo it — the obligation was already met.
-// A wrong-length word *before* completion fails it immediately.
-//
-// Progress needs two independent facts per event — how many qualifying
-// words landed, and whether a disqualifying one ever did — so this can't
-// be a single running number the way `counting()` produces; it's the
-// `{ count, violated }` shape CLAUDE.md's "Adding to it" describes for
-// definitions with a progress shape counting() doesn't fit.
-const cornerOnlyLength = Object.freeze({
-  id: 'cornerOnlyLength',
-  label: 'Only one word length in a corner',
-  defaults: { corner: 'nw', length: 6, count: 1 },
-  describe: (p) => `Score __only__ ${plural(p.count, `${p.length}-letter word`)}`,
   goal: (p) => p.count,
-  initial: () => ({ count: 0, violated: false }),
-  advance: (progress, event, params) => {
-    if (event.type !== GameEvent.WORD_SCORED || event.corner !== params.corner) return progress;
-    if (event.length === params.length) return { ...progress, count: progress.count + 1 };
-    return { ...progress, violated: true };
-  },
-  measure: (progress) => progress.count,
-  failed: (progress) => progress.violated,
+  initial: () => 0,
+  advance: (progress, event, params) => (countsFor(event, params) ? progress + 1 : progress),
+  measure: (progress) => progress,
+  enduring: (p) => p.constraint === Constraint.FEWER_THAN,
+  // Only a limit can fail before the game would otherwise end, and it fails
+  // on the move that reaches the limit — an instant loss in Objective mode,
+  // with corners still open and other goals possibly nearly done. That is
+  // deliberate: a limit the player blew is a limit they blew.
+  failed: (progress, p) => p.constraint === Constraint.FEWER_THAN && progress >= p.count,
 });
 
-// Score fewer than `limit` words in `corner`, total, any length — 0 is a
-// pass. `enduring`, so unlike cornerOnlyLength it never resolves COMPLETE
-// early: it only finalizes at game end (finalizeObjectives, runtime.js),
-// same as any other enduring objective that survived without failing. It
-// does not, however, hold the *game* open — once every target objective is
-// complete, standardEvaluate (modes.js) wins the game with a kept limit
-// still ACTIVE, and finish() resolves it COMPLETE a moment later.
-// `goal` reads as the ceiling `limit` names, not a target to reach.
-const cornerWordLimitCounter = counting({
-  id: 'cornerWordLimit',
-  label: 'Word cap in one corner',
-  defaults: { corner: 'nw', limit: 3 },
-  describe: (p) => `Score fewer than ${plural(p.limit, 'word')}`,
-  goal: (p) => p.limit,
-  matches: (event, p) => event.type === GameEvent.WORD_SCORED && event.corner === p.corner,
-});
-const cornerWordLimit = Object.freeze({
-  ...cornerWordLimitCounter,
-  enduring: true,
-  failed: (progress, params) => progress >= params.limit,
-});
-
-const DEFINITIONS = [
-  wordsOfLength,
-  words,
-  wordsStartingWithVowel,
-  totalScore,
-  wordsInCorner,
-  cornerOnlyLength,
-  cornerWordLimit,
-];
+const DEFINITIONS = [composed];
 
 const BY_ID = Object.freeze(
   DEFINITIONS.reduce((map, definition) => {
@@ -219,7 +155,9 @@ const BY_ID = Object.freeze(
   }, {})
 );
 
-// Throws rather than degrading: a typo in the pool should surface the
+export const COMPOSED_TYPE = composed.id;
+
+// Throws rather than degrading: a typo in a generated row should surface the
 // moment that data is loaded, not silently produce an objective that can
 // never be completed.
 export function getDefinition(type) {
@@ -232,21 +170,20 @@ export function getDefinition(type) {
   return definition;
 }
 
-// Every definition, for a future objective editor or for building pools
-// programmatically.
+// Every definition, for a future objective editor.
 export function listDefinitions() {
   return DEFINITIONS.map((d) => ({ id: d.id, label: d.label, defaults: { ...d.defaults } }));
 }
 
 // Fills a partial spec's params in from the definition's defaults, so a
-// pool row only has to state what it changes.
+// generated row only has to state what it chooses.
 export function resolveParams(type, params = {}) {
   return { ...getDefinition(type).defaults, ...params };
 }
 
 // One-line text for a spec without instantiating it — used by the pool
-// validator's error messages, and available to any screen that wants to
-// list objectives before a game starts.
+// validator's error messages, and available to any screen that wants to list
+// objectives before a game starts.
 export function describeSpec(spec) {
   const definition = getDefinition(spec.type);
   return spec.description ?? definition.describe(resolveParams(spec.type, spec.params));

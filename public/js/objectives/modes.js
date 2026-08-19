@@ -22,7 +22,8 @@
 //                     something else entirely.
 
 import { ObjectiveStatus } from './tracker.js';
-import { describeSpec } from './definitions.js';
+import { describeSpec, GLOBAL_SCOPE } from './definitions.js';
+import { buildObjectivePool, familyKey, rowsIncompatible } from './generator.js';
 import {
   DEFAULT_DIFFICULTY,
   DIFFICULTY_LABELS,
@@ -152,129 +153,42 @@ export const POINT_BUDGETS = Object.freeze({
   expert: 16,
 });
 
-const CORNERS = ['nw', 'ne', 'sw', 'se'];
+// How many objectives one deal may contain, however cheap they are. The
+// budget alone doesn't bound this — an Expert budget of 16 would otherwise
+// admit sixteen 1-cost objectives, which is an unreadable panel rather than
+// a hard game. The old pool bounded it accidentally, at the seven types it
+// happened to contain.
+const MAX_DEAL_SIZE = 6;
 
-// One priced row per corner, since "clear N words in the NW corner" and the
-// same in SE are the same task in different places — writing all four out
-// by hand would quadruple this table for no extra information.
-function perCorner(count, cost) {
-  return CORNERS.map((corner) => ({ type: 'wordsInCorner', params: { corner, count }, cost }));
-}
-
-// Same idea for the two restrictive corner types below.
-function perCornerOnlyLength(length, cost) {
-  return CORNERS.map((corner) => ({
-    type: 'cornerOnlyLength',
-    params: { corner, length, count: 1 },
-    cost,
-  }));
-}
-function perCornerWordLimit(limit, cost) {
-  return CORNERS.map((corner) => ({ type: 'cornerWordLimit', params: { corner, limit }, cost }));
-}
-
-// The priced catalog the Objective mode draws from.
+// The priced catalog the Objective mode draws from — generated, not
+// written. Every combination of word property × scope × constraint that the
+// cost model prices inside its bounds becomes a row here; see generator.js
+// for the axes and the pricing, and properties.js for the properties
+// themselves. Adding a property adds its whole column of objectives — every
+// scope, both constraints, a full ladder of counts — without this file
+// changing at all.
 //
-// `cost` is this exact tuning's difficulty in budget points — the whole
-// balancing surface now lives in this column. It is deliberately NOT called
-// `points`: the game already means "score" by that word (see `event.points`
-// and totalScore's `params.points`, which sits right next to it here).
+// `cost` is that exact combination's difficulty in budget points. It is
+// deliberately NOT called `points`: the game already means "score" by that
+// word (see `event.points`).
 //
-// Rows sharing a `type` are alternative tunings of one objective; a deal
-// takes at most one row per type (see selectWithinBudget), so a player is
-// never handed "score 8 three-letter words" alongside "score 18" of them,
-// where the first is just a milestone of the second.
-//
-// Costs are reasoned, not playtested — see the warning in CLAUDE.md.
-// Rungs run 1 through 6 plus an 8, not every step at every type. What
-// actually has to hold is that *some* 1-cost rows exist, so any leftover
-// budget can be filled; a type may skip its own 1-cost rung to put itself
-// out of reach at the smallest budgets, and wordsStartingWithVowel
-// (cheapest 2) and cornerOnlyLength (cheapest 4) both do. The module-load
-// validator below is what proves each tier spendable — the rungs are the
-// habit that keeps that true, not the proof.
-export const OBJECTIVE_POOL = Object.freeze([
-  // Word hunts by exact length. Longer words are far harder to land, so
-  // the counts drop sharply as `length` rises for the same cost.
-  { type: 'wordsOfLength', params: { length: 3, exact: true, count: 4 }, cost: 1 },
-  { type: 'wordsOfLength', params: { length: 3, exact: true, count: 8 }, cost: 2 },
-  { type: 'wordsOfLength', params: { length: 3, exact: true, count: 13 }, cost: 3 },
-  { type: 'wordsOfLength', params: { length: 3, exact: true, count: 18 }, cost: 4 },
-  { type: 'wordsOfLength', params: { length: 3, exact: true, count: 25 }, cost: 6 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 2 }, cost: 1 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 4 }, cost: 2 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 6 }, cost: 4 },
-  { type: 'wordsOfLength', params: { length: 4, exact: true, count: 8 }, cost: 5 },
-  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 2 }, cost: 4 },
-  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 4 }, cost: 5 },
-  { type: 'wordsOfLength', params: { length: 5, exact: false, count: 7 }, cost: 8 },
-  { type: 'wordsOfLength', params: { length: 6, exact: false, count: 2 }, cost: 6 },
-  { type: 'wordsOfLength', params: { length: 7, exact: true, count: 1 }, cost: 6 },
+// Rows differing only in their count are alternative tunings of one
+// objective — a "family" — and a deal takes at most one row per family, so
+// a player is never handed "score 6 or more words here" alongside "score 12
+// or more" of them, where the first is just a milestone of the second.
+export const OBJECTIVE_POOL = buildObjectivePool();
 
-  // Total words cleared, any length.
-  { type: 'words', params: { count: 6 }, cost: 1 },
-  { type: 'words', params: { count: 12 }, cost: 2 },
-  { type: 'words', params: { count: 18 }, cost: 3 },
-  { type: 'words', params: { count: 24 }, cost: 4 },
-  { type: 'words', params: { count: 32 }, cost: 6 },
-
-  // Words that begin with a vowel. Roughly a third of the draw is vowels
-  // (CATEGORY_WEIGHTS in letterSource.js) and a vowel is only useful as an
-  // opener if the corner is empty when it arrives, so these counts sit well
-  // below the equivalent `words` rungs at the same cost. No 1-cost rung: the
-  // cheapest ask here is already three words that had to start a corner a
-  // particular way. Other types carry the pool's 1-cost rows, so a remainder
-  // is still always fillable — same arrangement as cornerOnlyLength.
-  { type: 'wordsStartingWithVowel', params: { count: 3 }, cost: 2 },
-  { type: 'wordsStartingWithVowel', params: { count: 6 }, cost: 4 },
-  { type: 'wordsStartingWithVowel', params: { count: 9 }, cost: 6 },
-  { type: 'wordsStartingWithVowel', params: { count: 12 }, cost: 8 },
-
-  // Points. Climbs steeply because word scoring is superlinear.
-  { type: 'totalScore', params: { points: 20 }, cost: 1 },
-  { type: 'totalScore', params: { points: 40 }, cost: 2 },
-  { type: 'totalScore', params: { points: 60 }, cost: 4 },
-  { type: 'totalScore', params: { points: 80 }, cost: 5 },
-  { type: 'totalScore', params: { points: 100 }, cost: 6 },
-
-  // One named corner, all four available at each rung.
-  ...perCorner(3, 1),
-  ...perCorner(5, 2),
-  ...perCorner(7, 3),
-  ...perCorner(9, 4),
-  ...perCorner(11, 6),
-
-  // Restrictive: only this exact length may ever be scored in the named
-  // corner, and landing one is the whole objective (see cornerOnlyLength
-  // in definitions.js — a wrong-length word there fails it on the spot).
-  // Priced steeper than the equivalent wordsOfLength row for the same
-  // length: needing exactly one word is easy on its own, but the corner
-  // stays a live landmine for the rest of the game, and every other
-  // objective that would naturally want to use this corner now has to
-  // route around it too. Deliberately no 1- or 2-cost rung — this type is
-  // meant to be out of reach at Easy's smallest budgets. (Feasibility at
-  // every tier still holds: other types already carry the pool's 1-cost
-  // rows, which is all `selectWithinBudget` needs to fill a remainder.)
-  ...perCornerOnlyLength(5, 4),
-  ...perCornerOnlyLength(6, 6),
-
-  // Restrictive: the named corner must never reach `limit` words, total —
-  // 0 is a pass (see cornerWordLimit in definitions.js). Priced lighter
-  // than cornerOnlyLength: "mostly leave this corner alone" is a real
-  // strategy (just don't drop letters there), where "land exactly the
-  // right length" is not. Lower limit is the harsher constraint, so it
-  // costs more.
-  ...perCornerWordLimit(2, 2),
-  ...perCornerWordLimit(3, 1),
-]);
-
-function groupByType(pool) {
-  const byType = new Map();
+// Rows that differ only in their count, grouped. The search takes at most
+// one row per family, which is both the "no milestone of another objective"
+// rule and the thing that keeps deal sizes varied.
+function groupByFamily(pool) {
+  const byFamily = new Map();
   pool.forEach((row) => {
-    if (!byType.has(row.type)) byType.set(row.type, []);
-    byType.get(row.type).push(row);
+    const key = familyKey(row.params);
+    if (!byFamily.has(key)) byFamily.set(key, []);
+    byFamily.get(key).push(row);
   });
-  return byType;
+  return byFamily;
 }
 
 function shuffled(items, random) {
@@ -286,81 +200,93 @@ function shuffled(items, random) {
   return copy;
 }
 
-// What a row claims exclusively, so no deal can contain two rows claiming
-// the same thing.
-//
-// A row always claims its type — rows sharing one are alternative tunings,
-// and "score 8 three-letter words" alongside "score 18" of them is just a
-// milestone of the bigger one. A corner-scoped row *additionally* claims its
-// corner, because the three corner types make demands of one corner that
-// don't survive being combined: "clear 5 words here" and "score fewer than 2
-// words here" are each reasonable and jointly unwinnable, and "land one
-// 6-letter word here and nothing else" is winnable beside "clear 5 words
-// here" only if the 6-letter word happens to land first — a rule the player
-// is never shown. Rather than enumerate which pairs conflict (a table that
-// grows with every type added, and that someone has to remember to extend),
-// the corner is treated as the scarce thing, exactly as the type already is.
-//
-// Note no objective type declares itself corner-scoped: carrying a `corner`
-// param *is* the signal, the same convention renderObjectiveList (ui.js)
-// uses to decide whether to draw a shape. A future corner type therefore
-// gets this for free.
-function exclusionKeys(row) {
-  const keys = [`type:${row.type}`];
-  if (row.params?.corner) keys.push(`corner:${row.params.corner}`);
-  return keys;
-}
-
 // Exhaustive depth-first search for a set of rows that spends `remaining`
-// *exactly*, claiming each exclusion key at most once and taking exactly
-// `need` rows in total. Returns null only when no such set exists — every
-// affordable row is tried at each type, plus the branch that skips the type
-// — so a null is proof of infeasibility rather than an unlucky roll.
+// *exactly*, takes at most one row per family, takes exactly `need` rows in
+// total, and contains no incompatible pair. Returns null only when no such
+// set exists — every affordable row is tried at each family, plus the branch
+// that skips the family — so a null is proof of infeasibility rather than an
+// unlucky roll. The module-load validator depends on that being true.
 //
 // Fixing `need` up front is what keeps deal sizes varied. Searching without
-// it biases hard toward using every type (the "take a row" branches vastly
+// it biases hard toward using every family (the "take a row" branches vastly
 // outnumber the single "skip" branch), which would make an Easy game four
 // 1-cost objectives almost every time instead of sometimes one 4-cost one.
 //
-// `used` is mutated and restored around each branch rather than copied. That
-// is safe only because a row whose key is already claimed is filtered out
-// before the branch is taken, so every key this frame adds is one it owns.
-function findCombination(types, index, remaining, need, byType, random, used = new Set()) {
+// The possibility check is applied HERE, as a pruning predicate against the
+// rows already chosen, rather than to a finished deal. Generating a deal and
+// reshuffling it if it turns out contradictory would have given up the
+// exhaustiveness above — and could spin forever on a budget whose every
+// exact-spend combination happens to conflict. Pruning instead means an
+// impossible deal is never built in the first place, and `null` still means
+// what it always meant.
+//
+// `chosen` is mutated and restored around each branch rather than copied.
+function findCombination(families, index, remaining, need, byFamily, random, dearest, chosen = []) {
   if (need === 0) return remaining === 0 ? [] : null;
-  if (index >= types.length) return null;
-  if (types.length - index < need) return null; // not enough types left
+  if (remaining < need) return null; // every row costs at least 1
+  if (remaining > need * dearest) return null; // ...and at most `dearest`
+  if (index >= families.length) return null;
+  if (families.length - index < need) return null; // not enough families left
 
-  const affordable = byType
-    .get(types[index])
-    .filter((row) => row.cost <= remaining && !exclusionKeys(row).some((key) => used.has(key)));
+  const affordable = byFamily
+    .get(families[index])
+    .filter((row) => row.cost <= remaining && !chosen.some((taken) => rowsIncompatible(row, taken)));
   for (const row of shuffled(affordable, random)) {
-    const keys = exclusionKeys(row);
-    keys.forEach((key) => used.add(key));
+    chosen.push(row);
     const rest = findCombination(
-      types,
+      families,
       index + 1,
       remaining - row.cost,
       need - 1,
-      byType,
+      byFamily,
       random,
-      used
+      dearest,
+      chosen
     );
-    keys.forEach((key) => used.delete(key));
+    chosen.pop();
     if (rest) return [row, ...rest];
   }
-  return findCombination(types, index + 1, remaining, need, byType, random, used);
+  return findCombination(families, index + 1, remaining, need, byFamily, random, dearest, chosen);
 }
 
+// The dearest row in the pool, which bounds how much `need` rows can cover.
+// Cheap to compute and worth a lot: without it, proving an Expert budget of
+// 16 unspendable on two objectives means exhausting the search rather than
+// noticing that 2 × 6 < 16.
+function dearestCost(pool) {
+  return pool.reduce((max, row) => Math.max(max, row.cost), 0);
+}
+
+// Memoized because the answer depends on nothing else, and finding it is the
+// expensive half of dealing: proving a size *infeasible* means exhausting the
+// search, and every deal would otherwise redo that for all six sizes before
+// dealing one. Keyed on the pool object, so a caller passing a different pool
+// gets its own answers; the entry assumes a pool is not mutated after it is
+// first asked about, which holds for the frozen module-level one.
+const dealSizeCache = new WeakMap();
+
 // Which deal sizes a budget can be spent on exactly. Deterministic — the
-// search is exhaustive, so the random order only affects which combination
-// comes back, never whether one exists.
+// search is exhaustive and the incompatibility relation is symmetric, so the
+// random order only affects which combination comes back, never whether one
+// exists.
 export function feasibleDealSizes(pool, budget) {
-  const byType = groupByType(pool);
-  const types = [...byType.keys()];
-  const sizes = [];
-  for (let need = 1; need <= types.length; need++) {
-    if (findCombination(types, 0, budget, need, byType, () => 0)) sizes.push(need);
+  let byBudget = dealSizeCache.get(pool);
+  if (!byBudget) {
+    byBudget = new Map();
+    dealSizeCache.set(pool, byBudget);
   }
+  const cached = byBudget.get(budget);
+  if (cached) return cached;
+
+  const byFamily = groupByFamily(pool);
+  const families = [...byFamily.keys()];
+  const dearest = dearestCost(pool);
+  const sizes = [];
+  const largest = Math.min(MAX_DEAL_SIZE, families.length, budget);
+  for (let need = 1; need <= largest; need++) {
+    if (findCombination(families, 0, budget, need, byFamily, () => 0, dearest)) sizes.push(need);
+  }
+  byBudget.set(budget, sizes);
   return sizes;
 }
 
@@ -370,7 +296,7 @@ export function feasibleDealSizes(pool, budget) {
 // exactly, then finds a combination of that size. So an Easy budget of 4 is
 // as likely to be one 4-cost objective as it is four 1-cost ones.
 export function selectWithinBudget(pool, budget, random = Math.random) {
-  const byType = groupByType(pool);
+  const byFamily = groupByFamily(pool);
   const sizes = feasibleDealSizes(pool, budget);
   if (sizes.length === 0) {
     throw new Error(
@@ -379,8 +305,8 @@ export function selectWithinBudget(pool, budget, random = Math.random) {
     );
   }
   const need = sizes[Math.floor(random() * sizes.length)];
-  const types = shuffled([...byType.keys()], random);
-  return findCombination(types, 0, budget, need, byType, random);
+  const families = shuffled([...byFamily.keys()], random);
+  return findCombination(families, 0, budget, need, byFamily, random, dearestCost(pool));
 }
 
 // ---------------------------------------------------------------------
@@ -484,14 +410,19 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
 // it should surface at startup naming the tier rather than at the moment a
 // player picks that difficulty and the deal comes back empty.
 (function validatePool() {
-  // A corner-scoped objective's description no longer names its corner —
-  // the UI shows that as a shape (see js/cornerSymbols.js) — so the four
-  // per-corner variants of a rung describe identically. An error message
-  // has to say which row it means, hence the corner key spliced back in.
+  // A corner-scoped objective's description doesn't name its corner — the UI
+  // shows that as a shape (see js/cornerSymbols.js) — so the four per-corner
+  // variants of one tuning describe identically. An error message has to say
+  // which row it means, hence the scope spliced back in.
   const rowLabel = (row) =>
-    row.params?.corner ? `${describeSpec(row)} [${row.params.corner}]` : describeSpec(row);
+    row.params.scope === GLOBAL_SCOPE
+      ? describeSpec(row)
+      : `${describeSpec(row)} [${row.params.scope}]`;
 
   GAME_MODES.filter((mode) => mode.pool).forEach((mode) => {
+    if (mode.pool.length === 0) {
+      throw new Error(`Game mode "${mode.id}" generated an empty objective pool.`);
+    }
     // Every row must name a real definition and carry a usable cost.
     mode.pool.forEach((row) => {
       describeSpec(row); // throws on an unknown type or bad params
@@ -507,10 +438,15 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
       if (budget === undefined) {
         throw new Error(`Game mode "${mode.id}" has no point budget for difficulty "${tier}".`);
       }
+      // Still the real proof that a tier is playable: the search is
+      // exhaustive over families *and* over the possibility check, so an
+      // empty result means no compatible deal spends this budget exactly —
+      // not that the roll was unlucky.
       if (feasibleDealSizes(mode.pool, budget).length === 0) {
         throw new Error(
           `Game mode "${mode.id}" cannot spend its ${tier} budget of ${budget} exactly ` +
-            'with one objective per type. Add a cheaper rung, or change the budget.'
+            `with at most ${MAX_DEAL_SIZE} compatible objectives, one per family. ` +
+            'Adjust the budget, or the cost bounds in generator.js.'
         );
       }
     });
