@@ -1649,6 +1649,10 @@ body.game-over #corner-flags {
   color: var(--text);
 }
 
+.htp-row--single {
+  align-items: center;
+}
+
 .htp-glyph {
   position: relative;
   display: flex;
