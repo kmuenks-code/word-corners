@@ -51,16 +51,18 @@
   --corner-flag-gap: clamp(5px, 1.4vw, 9px);
 
   /* Shared sizing for the center-row bubbles, kept as variables so the
-     undo button and the blank slot can match the preview bubble exactly,
-     and so every column can shrink together on narrow phones instead of
-     forcing the row wider than the viewport. */
-  --small-bubble: clamp(44px, 11vw, 72px); /* undo-btn, preview-bubble, blank-slot */
+     undo button can match the preview bubble exactly, and so every column
+     can shrink together on narrow phones instead of forcing the row wider
+     than the viewport. */
+  --small-bubble: clamp(44px, 11vw, 72px); /* undo-btn, preview-bubble */
   --center-row-gap: clamp(4px, 2.4vw, 14px);
-  /* The two interchangeable choice bubbles are the tallest things in the
-     row, so they're capped by the center band as well as by width —
-     otherwise a short, wide viewport sizes them off vw alone and they
-     spill into the corner tiles. The subtracted reserve covers the halo
-     ring, which overhangs each bubble on every side. */
+  /* The choice bubbles — the two dealt letters plus the blank slot beside
+     them — are the tallest things in the row, so they're capped by the
+     center band as well as by width: otherwise a short, wide viewport sizes
+     them off vw alone and they spill into the corner tiles. The subtracted
+     reserve covers the halo ring, which overhangs each bubble on every
+     side. Three of these plus two small columns and four gaps is ~299px at
+     320px wide, the narrowest screen the row is tuned for. */
   --choice-bubble: max(60px, min(18vw, 108px, var(--center-band) - clamp(30px, 6vh, 44px)));
 }
 
@@ -126,11 +128,11 @@ body {
   z-index: 15;
 }
 
-/* Non-production marker (staging / localhost). Sits at the far left of the
-   top bar — margin-right:auto pushes the score badge back to the right edge
-   under #top-bar's flex-end — and is small enough not to crowd the centered,
-   absolutely positioned logo. Gold, matching the blank tile, since that's
-   already the board's "this is special" color.
+/* Non-production marker (staging / localhost). Parked in the center,
+   overlapping the logo, now that the objective flag has taken over its old
+   top-left spot — a temporary home, not a permanent design decision. Gold —
+   the one accent the board keeps for "this is not part of the game", which
+   is exactly what a TEST badge is.
    The [hidden] rule re-asserts the hide over the inline-flex above it: an
    author declaration beats the UA stylesheet's [hidden] { display: none },
    so without it the badge would show on production. Same trap as
@@ -138,7 +140,11 @@ body {
 #env-badge {
   display: inline-flex;
   align-items: center;
-  margin-right: auto;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
   padding: clamp(2px, 0.8vw, 5px) clamp(6px, 2.2vw, 11px);
   border-radius: 999px;
   background: linear-gradient(165deg, #F2AE5E 0%, var(--accent) 62%, #C97A28 100%);
@@ -169,6 +175,7 @@ body {
 }
 
 #score-badge {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -177,11 +184,27 @@ body {
   min-width: clamp(56px, 17vw, 84px);
   padding: clamp(4px, 1.2vw, 8px) clamp(8px, 3vw, 16px);
   border-radius: 14px;
+  overflow: hidden;
   background: linear-gradient(165deg, #FDFBF2 0%, var(--corner-bg) 60%, var(--corner-bg-deep) 100%);
   box-shadow:
     0 4px 0 -1px rgba(12, 58, 68, 0.14),
     0 6px 12px var(--shadow-soft),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Progress toward the next blank-tile threshold, as a light teal fill
+   climbing left-to-right. Absolutely positioned and painted first in the
+   markup, so it sits behind the label/value text without needing z-index —
+   see js/ui.js (renderScore) for the width it's given. #score-badge's own
+   overflow: hidden keeps its square corners inside the badge's rounded
+   ones. */
+#score-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background: rgba(39, 143, 142, 0.28);
+  transition: width 0.25s ease;
+  pointer-events: none;
 }
 
 #score-label {
@@ -231,10 +254,11 @@ body {
 }
 
 /* Marks a letter within a corner's word as placed via the blank/wildcard
-   tile — same gold as the blank bubble/picker, so it's recognizable at a
-   glance as "not a normally-drawn letter" wherever it appears. */
+   tile — the bubbles' own bright teal against the tile's much darker ink,
+   so it's recognizable at a glance as "not a normally-drawn letter" and
+   still points back at the bubble it came from. */
 .blank-letter {
-  color: var(--accent);
+  color: var(--bubble-bg);
 }
 
 #corner-nw {
@@ -341,28 +365,49 @@ body {
   font-size: clamp(1rem, 4vw, 1.3rem);
 }
 
-/* The whole .word-feedback block is already var(--accent), so this line
-   needs more than color alone to read as distinct from the length/points
-   lines above it — a small pill in the blank bubble's own gold gradient
-   (see .blank-bubble) marks it as the bonus line. */
-.word-feedback-blank {
-  margin-top: 2px;
-  padding: 2px clamp(8px, 2.5vw, 12px);
-  border-radius: 999px;
-  background: radial-gradient(circle at 32% 24%, #FFD873 0%, var(--accent) 55%, #C06E1C 100%);
-  color: #FFFBEF;
-  font-size: clamp(0.62rem, 2.5vw, 0.78rem);
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-shadow: 0 1px 2px rgba(122, 62, 10, 0.4);
-}
-
 @keyframes word-feedback-pop {
   0% { opacity: 0; transform: translate(-50%, -50%) translateY(0); }
   15% { opacity: 1; transform: translate(-50%, -50%) translateY(-8px); }
   70% { opacity: 1; transform: translate(-50%, -50%) translateY(-8px); }
   100% { opacity: 0; transform: translate(-50%, -50%) translateY(-28px); }
+}
+
+/* Anchored under #score-badge (see index.html) rather than inside it —
+   #score-badge has overflow: hidden for the progress fill, which would
+   clip a toast rising past its edge. Right-aligned to line up with the
+   badge above it. */
+#blank-toast-anchor {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Same pill look the corner feedback's blank line used to have — a small
+   badge in the choice bubbles' teal gradient (the blank bubble is one of
+   them now), just relocated next to the score box instead of the corner
+   that earned it, since the award is about total score, not that word. */
+.blank-toast {
+  margin-top: 4px;
+  padding: 4px clamp(10px, 3vw, 14px);
+  border-radius: 999px;
+  background: radial-gradient(circle at 32% 24%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
+  color: var(--text-light);
+  font-size: clamp(0.62rem, 2.5vw, 0.78rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(9, 50, 60, 0.4);
+  white-space: nowrap;
+  animation: blank-toast-rise 1.8s ease forwards;
+}
+
+@keyframes blank-toast-rise {
+  0% { opacity: 0; transform: translateY(0); }
+  15% { opacity: 1; transform: translateY(-6px); }
+  70% { opacity: 1; transform: translateY(-6px); }
+  100% { opacity: 0; transform: translateY(-30px); }
 }
 
 /* ---------- Center row ---------- */
@@ -390,13 +435,25 @@ body {
   grid-template-columns:
     var(--small-bubble)
     var(--small-bubble)
-    var(--choice-bubble)
-    var(--choice-bubble)
-    var(--small-bubble);
+    repeat(3, var(--choice-bubble));
   align-items: center;
   justify-items: center;
   gap: var(--center-row-gap);
   pointer-events: auto;
+}
+
+/* The blank's column is declared above whether or not a blank is in hand,
+   and a grid keeps an empty track's width — which would leave the row sat
+   noticeably left of center for most of a game. Dropping the track while
+   #blank-slot is hidden re-centers it. The cost is that earning or spending
+   a blank shifts the two choice bubbles sideways by half a column; keeping
+   the track instead would pay that cost permanently, on every game, for a
+   bubble most turns don't have. */
+#center-row:has(#blank-slot[hidden]) {
+  grid-template-columns:
+    var(--small-bubble)
+    var(--small-bubble)
+    repeat(2, var(--choice-bubble));
 }
 
 .row-slot {
@@ -420,48 +477,61 @@ body {
   white-space: nowrap;
 }
 
-/* Blocked: the two normal choice bubbles while a blank letter is
-   pending (see #blank-bubble below) — grayed out and inert instead of
-   the usual teal, signaling they can't be used until the blank is
-   placed. */
-.choice-bubble.blocked {
-  background: linear-gradient(160deg, #DCD9CC 0%, #C7C3B2 52%, #AFAB99 100%);
+/* The blank bubble takes .choice-bubble unmodified — same size, same teal,
+   same grab affordance — because it is a third interchangeable letter, not
+   a special mode. Only its glyph and its count badge are its own. The whole
+   slot is hidden (the `hidden` attribute on #blank-slot) while the player
+   holds none, which is also what collapses its grid column above. */
+
+/* The blank's glyph: an underscore, drawn rather than typed so it can be
+   placed low in the bubble at any size — a text "_" hangs at the baseline,
+   low in its line box, but the bubble centers its content, so a typed one
+   would land dead center and read as a dash. The translateY nudges the
+   drawn bar down to where a real underscore sits; using transform rather
+   than margin matters here, since input.js clears inline margin (but not
+   transform) while a drag is live, and the offset must survive that. It
+   carries .choice-letter so the drag styling and z-index that a real
+   letter gets apply here unchanged. */
+#blank-mark {
+  width: calc(var(--choice-bubble) * 0.38);
+  height: calc(var(--choice-bubble) * 0.09);
+  border-radius: 999px;
+  background: currentColor;
+  filter: drop-shadow(0 2px 3px rgba(9, 50, 60, 0.35));
+  transform: translateY(calc(var(--choice-bubble) * 0.26));
+}
+
+/* .choice-letter.dragging's cream halo is a text-shadow, which does nothing
+   to a drawn bar — same effect, as drop-shadows. */
+#blank-mark.dragging {
+  filter:
+    drop-shadow(0 0 3px rgba(243, 240, 227, 1))
+    drop-shadow(0 0 8px rgba(243, 240, 227, 0.95))
+    drop-shadow(0 4px 8px rgba(12, 58, 68, 0.3));
+}
+
+/* How many blanks are stacked up, shown from the second onward (see
+   renderBlankBubble in js/ui.js). Cream on teal, borrowing the preview
+   bubble's palette, so it reads as a label on the bubble rather than as
+   another letter. Its lack of a `display` declaration is deliberate: the
+   UA stylesheet's [hidden] rule is left free to hide it. */
+#blank-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: calc(var(--choice-bubble) * 0.34);
+  padding: 0 4px;
+  border-radius: 999px;
+  background: linear-gradient(165deg, #FDFBF2 0%, var(--corner-bg) 58%, var(--corner-bg-deep) 100%);
   box-shadow:
-    0 4px 0 -1px rgba(12, 58, 68, 0.14),
-    0 8px 14px var(--shadow-soft),
-    inset 0 3px 6px rgba(255, 255, 255, 0.25);
-  cursor: not-allowed;
+    0 2px 0 -1px rgba(12, 58, 68, 0.18),
+    0 3px 6px var(--shadow-soft);
+  color: var(--text);
+  font-size: calc(var(--choice-bubble) * 0.19);
+  font-weight: 800;
+  line-height: calc(var(--choice-bubble) * 0.3);
+  text-align: center;
   pointer-events: none;
-}
-
-/* The blank/star bubble: awarded on a 5+ letter valid word, sized like
-   the small preview/undo bubbles (it lives in that same grid column —
-   see index.html) but colored to stand out as a special, grabbable
-   letter. Hidden (via the `hidden` attribute on its #blank-slot
-   row-slot) whenever no blank is pending. */
-.choice-bubble.blank-bubble {
-  width: var(--small-bubble);
-  height: var(--small-bubble);
-  background: radial-gradient(circle at 32% 24%, #FFD873 0%, var(--accent) 55%, #C06E1C 100%);
-  /* Shadow scaled for --small-bubble (matches #undo-btn's recipe), not
-     .choice-bubble's — that shadow is tuned for the much larger
-     --choice-bubble size and, left un-overridden, blurs past this
-     bubble's edge far enough to visually bleed into the neighboring
-     choice bubble. */
-  box-shadow:
-    0 5px 0 -1px rgba(12, 58, 68, 0.3),
-    0 9px 16px var(--shadow),
-    inset 0 2px 4px rgba(255, 255, 255, 0.4),
-    inset 0 -5px 10px rgba(9, 50, 60, 0.3);
-  color: #FFFBEF;
-  cursor: grab;
-  touch-action: none;
-}
-
-.blank-star {
-  width: 52%;
-  height: 52%;
-  filter: drop-shadow(0 2px 3px rgba(122, 62, 10, 0.4));
 }
 
 #undo-btn {
@@ -736,9 +806,9 @@ body.game-over #game-over {
 
 /* ---------- Blank letter picker ---------- */
 
-/* Covers the whole board once the blank has been dropped on a corner,
-   forcing a letter choice — no backdrop-dismiss, matching the "must use
-   it immediately" rule (see js/main.js). */
+/* Covers the whole board once a blank has been dropped on a corner. Both
+   the backdrop and the Cancel button back out of it, returning the blank to
+   the center unspent — a blank can wait, so nothing has to be forced. */
 #blank-picker {
   position: absolute;
   inset: 0;
@@ -807,17 +877,37 @@ body.game-over #game-over {
     inset 0 2px 3px rgba(255, 255, 255, 0.35);
 }
 
+/* Quieter than the 26 letters it sits under — backing out is the secondary
+   action here, not one of the choices. */
+#blank-picker-cancel {
+  align-self: center;
+  padding: 7px 22px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
 /* ---------- Objective flag ---------- */
 
-/* A tab on the right edge of the board, vertically centred — clear of the
-   score badge up top and the hint bar down bottom. Shown only in a mode
+/* A tab hugging the top-left corner of the board, clear of the center row
+   below it. Used to sit vertically centred on the right edge, but that put
+   it in the same vertical band as the center row, and the row's new third
+   (blank) bubble now reaches wide enough to overlap it there — the top-left
+   corner is the nearest clear space. Took over the spot #env-badge used to
+   sit in; the badge moved to the center to make room. Shown only in a mode
    that actually has objectives (renderObjectiveFlag in js/ui.js), so
    Endless looks exactly as it always did. */
 #objective-flag {
   position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
+  top: calc(env(safe-area-inset-top) + clamp(8px, 2vh, 18px));
+  left: var(--edge-gap);
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -826,11 +916,11 @@ body.game-over #game-over {
   width: clamp(38px, 10vw, 52px);
   padding: 9px 6px 7px;
   border: none;
-  border-radius: 14px 0 0 14px;
+  border-radius: 0 14px 14px 0;
   background: linear-gradient(160deg, #FDFBF2 0%, var(--corner-bg) 52%, var(--corner-bg-deep) 100%);
   box-shadow:
-    -3px 4px 0 -1px rgba(12, 58, 68, 0.22),
-    -2px 8px 14px var(--shadow-soft),
+    3px 4px 0 -1px rgba(12, 58, 68, 0.22),
+    2px 8px 14px var(--shadow-soft),
     inset 0 2px 3px rgba(255, 255, 255, 0.42);
   color: var(--text);
   font-family: inherit;
@@ -857,10 +947,10 @@ body.game-over #game-over {
 }
 
 #objective-flag:active {
-  transform: translateY(-50%) translateX(3px);
+  transform: translateX(-3px);
   box-shadow:
-    -1px 2px 0 -1px rgba(12, 58, 68, 0.22),
-    -1px 4px 8px var(--shadow-soft),
+    1px 2px 0 -1px rgba(12, 58, 68, 0.22),
+    1px 4px 8px var(--shadow-soft),
     inset 0 2px 3px rgba(255, 255, 255, 0.35);
 }
 
@@ -876,9 +966,9 @@ body.game-over #game-over {
 }
 
 @keyframes flag-bump {
-  0%   { transform: translateY(-50%) scale(1); }
-  35%  { transform: translateY(-50%) scale(1.16); }
-  100% { transform: translateY(-50%) scale(1); }
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.16); }
+  100% { transform: scale(1); }
 }
 
 /* The game-over card carries its own objective summary, so the flag would
@@ -1662,15 +1752,17 @@ body.game-over #corner-flags {
   color: var(--accent);
 }
 
-/* The blank bubble, shrunk — gold rather than teal, same as the real one. */
-.htp-star {
+/* The blank bubble, shrunk — teal like the real one, since the blank is a
+   third choice bubble rather than a thing apart, and marked by the same
+   drawn underscore. */
+.htp-blank {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 22%, #FFD873 0%, var(--accent) 55%, #C06E1C 100%);
+  background: radial-gradient(circle at 30% 22%, var(--bubble-light) 0%, var(--bubble-bg) 55%, var(--bubble-deep) 100%);
   box-shadow:
     0 3px 0 -1px rgba(12, 58, 68, 0.26),
     0 5px 9px var(--shadow-soft),
@@ -1678,9 +1770,11 @@ body.game-over #corner-flags {
   color: var(--text-light);
 }
 
-.htp-star svg {
-  width: 62%;
-  height: 62%;
+.htp-blank-mark {
+  width: 42%;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 #how-to-play-close {

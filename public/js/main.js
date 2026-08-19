@@ -7,7 +7,8 @@ import {
   closeCorner,
   setChoiceLetter,
   setNextLetter,
-  setBlankPending,
+  addBlank,
+  spendBlank,
   removeLastLetter,
   reopenCorner,
   markGameStarted,
@@ -40,12 +41,12 @@ import {
   renderGameOver,
   hideGameOver,
   showWordFeedback,
+  showBlankEarnedToast,
   renderUndoAvailability,
   renderBlankPickerOptions,
   showBlankPicker,
   hideBlankPicker,
   renderBlankBubble,
-  setChoicesBlocked,
   renderBestScore,
   renderEnvBadge,
   renderModeOptions,
@@ -70,7 +71,7 @@ import {
 } from './ui.js';
 
 const CHOICE_COUNT = 2;
-const BLANK_AWARD_LENGTH = 5;
+const BLANK_SCORE_INTERVAL = 25;
 const MIN_WORD_LENGTH = 3;
 
 let state = createGameState();
@@ -121,6 +122,8 @@ let gameRecorded = false;
 
 const cornerEls = Array.from(document.querySelectorAll('.corner'));
 const scoreEl = document.getElementById('score-value');
+const scoreFillEl = document.getElementById('score-fill');
+const blankToastAnchorEl = document.getElementById('blank-toast-anchor');
 const finalScoreEl = document.getElementById('final-score');
 const finalScoreRowEl = document.getElementById('final-score-row');
 const newGameBtn = document.getElementById('new-game-btn');
@@ -134,8 +137,11 @@ const choiceLetterEls = Array.from({ length: CHOICE_COUNT }, (_, i) =>
 );
 const blankSlotEl = document.getElementById('blank-slot');
 const blankBubbleEl = document.getElementById('blank-bubble');
+const blankMarkEl = document.getElementById('blank-mark');
+const blankCountEl = document.getElementById('blank-count');
 const blankPickerEl = document.getElementById('blank-picker');
 const blankPickerGridEl = document.getElementById('blank-picker-grid');
+const blankPickerCancelBtn = document.getElementById('blank-picker-cancel');
 const personalBestRowEl = document.getElementById('personal-best-row');
 const personalBestEl = document.getElementById('personal-best');
 const globalBestRowEl = document.getElementById('global-best-row');
@@ -410,7 +416,6 @@ function initRound() {
 
 function handleDrop(index, targetName) {
   if (state.gameOver) return;
-  if (state.blankPending) return;
   if (state.closedCorners[targetName]) return;
 
   const objectiveMark = objectives.mark();
@@ -444,30 +449,49 @@ function handleDrop(index, targetName) {
   maybeEndGame();
 }
 
-// Awards a blank/star letter whenever a valid word of BLANK_AWARD_LENGTH+
-// is submitted. Blocks the two normal choice bubbles and word submission
-// until the player drags the blank to a corner and picks a letter — see
-// handleBlankDrop/handleBlankLetterChosen.
+// The blank bubble is a third optional letter, not an interruption: it sits
+// in the center row for as long as the player holds an unused blank, and the
+// two normal choices and corner submission carry on untouched beside it. The
+// whole of its state is the count — the bubble is shown while that's above
+// zero and badged once it's above one.
 function renderBlankState() {
-  renderBlankBubble(blankSlotEl, state.blankPending);
-  setChoicesBlocked(choiceBubbleEls, state.blankPending);
+  renderBlankBubble(blankSlotEl, blankCountEl, state.blanksHeld);
 }
 
-// hadBlank: whether the submitted word already contained a blank-letter —
-// a word that used a blank can't earn another one, even at 5+ letters.
-function awardBlankIfEligible(cornerName, word, hadBlank) {
-  if (hadBlank || word.length < BLANK_AWARD_LENGTH) return;
-  setBlankPending(state, true);
-  recordBlankEarned(state);
-  objectives.emit(GameEvent.BLANK_AWARDED, { corner: cornerName, word });
-  renderBlankState();
+// Blanks are earned by total score crossing a 25-point mark (25, 50, 75...),
+// not by anything about the word just played. state.stats.blanksEarned
+// doubles as "how many thresholds have been paid out so far" — comparing it
+// against floor(score / interval) is what lets a single big word cross more
+// than one mark at once and award more than one blank. Blanks stack, so an
+// award while one is already in hand is a second blank rather than a no-op.
+function awardBlanksForScore(cornerName, word) {
+  const targetBlanks = Math.floor(state.score / BLANK_SCORE_INTERVAL);
+  let awarded = 0;
+  while (state.stats.blanksEarned < targetBlanks) {
+    addBlank(state);
+    recordBlankEarned(state);
+    objectives.emit(GameEvent.BLANK_AWARDED, { corner: cornerName, word });
+    awarded += 1;
+  }
+  if (awarded > 0) {
+    renderBlankState();
+    showBlankEarnedToast(blankToastAnchorEl);
+  }
 }
 
 function handleBlankDrop(targetName) {
-  if (!state.blankPending || state.gameOver) return;
+  if (state.blanksHeld === 0 || state.gameOver) return;
   if (state.closedCorners[targetName]) return;
   pendingBlankCorner = targetName;
   showBlankPicker(blankPickerEl);
+}
+
+// The picker is dismissible now that a blank can wait: backing out of it
+// leaves the blank unspent and the corner untouched, which is the only
+// escape from a blank dropped on the wrong corner that doesn't cost a move.
+function handleBlankPickerDismissed() {
+  pendingBlankCorner = null;
+  hideBlankPicker(blankPickerEl);
 }
 
 function handleBlankLetterChosen(letter) {
@@ -489,7 +513,7 @@ function handleBlankLetterChosen(letter) {
     closedNow = true;
   }
 
-  setBlankPending(state, false);
+  spendBlank(state);
   renderBlankState();
   pendingBlankCorner = null;
   hideBlankPicker(blankPickerEl);
@@ -516,7 +540,7 @@ function handleUndo() {
       reopenCorner(state, corner);
       resetCornerVisuals(cornerEl);
     }
-    setBlankPending(state, true);
+    addBlank(state);
     renderBlankState();
     lastMove = null;
     renderUndoAvailability(undoBtn, false);
@@ -542,7 +566,7 @@ function handleUndo() {
 }
 
 function handleSubmit(cornerName) {
-  if (state.closedCorners[cornerName] || state.gameOver || state.blankPending) return;
+  if (state.closedCorners[cornerName] || state.gameOver) return;
 
   const word = state.corners[cornerName];
   if (!word) return;
@@ -554,8 +578,9 @@ function handleSubmit(cornerName) {
     const points = scoreWord(word);
     addScore(state, points);
     recordWordSubmitted(state, word.length);
-    renderScore(scoreEl, state.score);
-    showWordFeedback(cornerEl, word.length, points, word.length >= BLANK_AWARD_LENGTH && !hadBlank);
+    awardBlanksForScore(cornerName, word);
+    renderScore(scoreEl, state.score, scoreFillEl, BLANK_SCORE_INTERVAL);
+    showWordFeedback(cornerEl, word.length, points);
     objectives.emit(GameEvent.WORD_SCORED, {
       corner: cornerName,
       word,
@@ -570,7 +595,6 @@ function handleSubmit(cornerName) {
     // undone any more, so the objective runtime can drop its event log.
     objectives.commit();
     renderUndoAvailability(undoBtn, false);
-    awardBlankIfEligible(cornerName, word, hadBlank);
     maybeEndGame();
   } else {
     objectives.emit(GameEvent.WORD_REJECTED, {
@@ -606,7 +630,7 @@ function startGame(mode) {
   closeCornerPopover();
   hideHowToPlay(howToPlayEl);
   renderBlankState();
-  renderScore(scoreEl, state.score);
+  renderScore(scoreEl, state.score, scoreFillEl, BLANK_SCORE_INTERVAL);
   cornerEls.forEach((cornerEl) => {
     resetCornerVisuals(cornerEl);
     renderCorner(cornerEl, '');
@@ -640,12 +664,20 @@ async function start() {
   choiceBubbleEls.forEach((bubbleEl, index) => {
     initDrag(choiceLetterEls[index], cornerEls, (target) => handleDrop(index, target), bubbleEl);
   });
-  initDrag(blankBubbleEl, cornerEls, handleBlankDrop, blankBubbleEl);
+  // The mark flies and the bubble stays put, exactly as a choice letter
+  // does — the blank is one of the three draggable letters now, so it drags
+  // like one. The bubble is still what starts the gesture, so the whole
+  // circle is grabbable and the ×N badge doesn't travel with the letter.
+  initDrag(blankMarkEl, cornerEls, handleBlankDrop, blankBubbleEl);
   renderBlankPickerOptions(blankPickerGridEl);
   blankPickerGridEl.addEventListener('click', (e) => {
     const btn = e.target.closest('.blank-picker-btn');
     if (!btn) return;
     handleBlankLetterChosen(btn.dataset.letter);
+  });
+  blankPickerCancelBtn.addEventListener('click', handleBlankPickerDismissed);
+  blankPickerEl.addEventListener('click', (e) => {
+    if (e.target === blankPickerEl) handleBlankPickerDismissed();
   });
   cornerEls.forEach((cornerEl) => {
     cornerEl.addEventListener('click', () => handleSubmit(cornerEl.dataset.corner));

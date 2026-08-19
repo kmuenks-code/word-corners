@@ -4,20 +4,21 @@ export function createGameState() {
   return {
     corners: { nw: '', ne: '', sw: '', se: '' },
     // Index positions within each corner's word that were placed via the
-    // blank/wildcard letter (see appendBlankLetterToCorner) — drives both
-    // the gold rendering of those letters and the "a word containing a
-    // blank can't earn another blank" rule. See main.js.
+    // blank/wildcard letter (see appendBlankLetterToCorner) — drives the
+    // bright-teal rendering of those letters. See main.js.
     blankIndices: { nw: [], ne: [], sw: [], se: [] },
     closedCorners: { nw: false, ne: false, sw: false, se: false },
     choices: [null, null],
     // The upcoming letter shown in the preview bubble. Advances into
     // whichever choice slot is used next. See main.js.
     nextLetter: null,
-    // True once a 5+ letter valid word has awarded a blank, until the
-    // player drags it to a corner and picks a letter. While true the two
-    // normal choice bubbles are blocked and word submission is disabled —
-    // the blank must be used before anything else. See main.js.
-    blankPending: false,
+    // How many unused blanks the player is holding. Earned every time total
+    // score crosses a 25-point mark (see BLANK_SCORE_INTERVAL in main.js)
+    // and kept until spent, so they stack: an award while one is still in
+    // hand adds to the pile rather than being lost. While any is held a
+    // third bubble joins the two choices in the center row and is draggable
+    // exactly like them — nothing else about the turn changes. See main.js.
+    blanksHeld: 0,
     score: 0,
     gameOver: false,
     // Per-game telemetry, posted to the database once at game over (see
@@ -94,8 +95,15 @@ export function setNextLetter(state, letter) {
   state.nextLetter = letter;
 }
 
-export function setBlankPending(state, pending) {
-  state.blankPending = pending;
+// Puts a blank in hand. Also the undo path for a placed blank: the letter
+// comes off the corner and the blank goes back on the pile, where it can sit
+// indefinitely rather than demanding to be re-placed.
+export function addBlank(state) {
+  state.blanksHeld += 1;
+}
+
+export function spendBlank(state) {
+  state.blanksHeld -= 1;
 }
 
 export function addScore(state, points) {

@@ -2,7 +2,8 @@
 
 Mobile-friendly word game. Four corners of the screen are word-building
 zones; two interchangeable letters sit in the center with a smaller "next"
-preview beside them. Drag either choice into a corner to append it to that
+preview beside them, joined by a third wildcard bubble whenever the player
+is holding an unspent blank. Drag either choice into a corner to append it to that
 corner's word; that slot refills from the preview, and a fresh letter is
 drawn into the preview — both slots pull from the one shared queue. Tap a
 corner to submit it. A corner closes for good once no dictionary word
@@ -178,28 +179,60 @@ player could cycle it to shop for a preview letter they like. The letter
 drawn during the undone move comes back on the next advance, so undoing
 yields a second-guess but never new information.
 
-Undoing a blank placement re-arms `blankPending` instead of restoring a
-choice slot — which is what makes undo respect "use the blank
-immediately": the player is forced straight back into placing it.
+Undoing a blank placement puts the blank back on the pile instead of
+restoring a choice slot; nothing else differs, and the player is under no
+obligation to re-place it.
 
 ### Blank letter
-A valid word of `BLANK_AWARD_LENGTH` (5)+ awards a wildcard blank. While
-one is pending, three things happen together and reverse together: the
-blank bubble appears, the two normal choices gray out and stop accepting
-drags, and corner submission becomes a no-op. That's deliberate — the blank
-must resolve before anything else, so there's no window to earn a second
-one or abandon the first mid-turn. Its picker overlay has no dismiss
-affordance for the same reason.
+Crossing a `BLANK_SCORE_INTERVAL` (25) multiple of total score — 25, 50,
+75... — awards a wildcard blank. It's a threshold on the running total, not
+a per-word rule, so `awardBlanksForScore` compares `state.stats.blanksEarned`
+(how many thresholds have been paid out so far) against
+`floor(score / BLANK_SCORE_INTERVAL)` and can award more than one blank off
+a single word if its points cross more than one mark at once. A blank
+is **a third optional letter, not an interruption**: it sits in the center
+row beside the two choices for as long as it goes unused, and everything
+else about the turn — both normal choices, corner submission, undo —
+carries on untouched beside it. `state.blanksHeld` is the whole of its
+state.
+
+That one rule is what the rest follows from:
+
+- **Blanks stack.** Earning one while already holding one is a second
+  blank, not a wasted award, since nothing forces the first to be spent.
+  One bubble stands for the pile (they're interchangeable) with a `×N`
+  badge from the second onward.
+- **The picker dismisses** — backdrop or Cancel — returning the blank
+  unspent. It used to have no way out only because the blank had to resolve
+  before play could continue; that reason is gone, and dismissing is now
+  the only way back from a blank dropped on the wrong corner that doesn't
+  cost a move.
+- **Undo returns the blank to the pile** rather than re-arming anything.
+  It's an ordinary undo of an ordinary letter now.
+- It **looks like a choice bubble** because it is one: same size, same
+  teal, dragged the same way (the glyph flies, the bubble stays). Its
+  underscore is drawn rather than typed — a text `_` sits low in its line
+  box, and no vertical nudge survives `input.js` repositioning the element
+  for a drag.
+- The slot carries **no `.row-label`**, unlike the undo and preview
+  columns. A label would make it the tallest column in the row and push the
+  whole row into the per-corner objective flags on a 320×568 screen. The
+  two choice bubbles have no label either, which is the point.
 
 The blank is fully separate from the letter supply: not drawn from
 `getRandomLetter`, and it neither consumes nor advances the preview.
 
 Blank-derived positions stay marked for as long as they sit in an
-unsubmitted word, which drives two things: they render gold, and **a word
-containing one never awards another blank**, closing the
-chain-blanks-off-each-other loophole. Because a valid submit clears the
-corner immediately, "contains a blank" and "used a blank in this
-submission" are the same condition in practice.
+unsubmitted word, which is what renders them in the bubbles' bright teal.
+Since blanks are earned off total score rather than any one word, a word
+that used a blank counts toward the next threshold exactly like any other —
+there's no chain-blanks-off-each-other loophole to close here, because
+reusing a blank doesn't score points for free.
+
+The score badge in the top bar fills with a light teal tint tracking
+progress toward the next threshold (`score % BLANK_SCORE_INTERVAL`), reset
+to empty the instant a threshold is crossed — `renderScore` in `ui.js`
+drives both the number and the fill from the same call.
 
 ### How to Play overlay
 Five illustrated rules behind the bottom bar. The simplest feature in the
@@ -237,12 +270,24 @@ instead of colliding with the center row. `--small-bubble`,
 `--choice-bubble` and `--center-row-gap` are the single knobs for the
 center row's scale; everything in the row sizes off one of them so it
 shrinks as a unit rather than one piece overflowing. Their minimums are
-tuned to fit a 320px-wide screen.
+tuned to fit a 320px-wide screen — two small columns plus **three**
+`--choice-bubble` ones (the blank sits in the third) and four gaps come to
+~299px there.
+
+The blank's column is declared whether or not a blank is in hand, and grid
+tracks keep their width when empty, so a `:has(#blank-slot[hidden])` rule
+drops the track while the slot is hidden. Without it the row sits visibly
+left of center for most of a game. The cost is the reverse: earning or
+spending a blank shifts the two choice bubbles sideways by half a column.
+That trade was made deliberately — one shift at a moment the player caused
+beats a permanently lopsided row.
 
 One shape lesson worth keeping: a small bubble borrowing `.choice-bubble`
 styling must override the **shadow** too. Inherited unchanged, a shadow
 scaled for the large bubble blurs past a small one's edge and bleeds into
-its neighbor — a real bug once, on `.blank-bubble`.
+its neighbor — a real bug once, on the blank bubble back when it was
+small. Nothing borrows that way today; the blank bubble is now a
+`.choice-bubble` at full size and wants the shadow exactly as written.
 
 ## Objectives
 Goals the game sets the player, drawn against a points budget set by the
@@ -505,7 +550,7 @@ corner is being made.
   covered with no work here. The one-objective-per-corner rule is what
   makes the flag-to-objective mapping 1:1 by construction — if that rule
   ever goes, this UI needs an answer for two flags on one corner.
-- **They hug the outer screen edges.** The center row can be ~283px wide on
+- **They hug the outer screen edges.** The center row can be ~299px wide on
   a 320px screen, so the edges are the only horizontal space reliably free;
   the flags also clear the row vertically, in a strip that is ~38px tall on
   that same phone. That is what caps `--corner-flag-height`, and why

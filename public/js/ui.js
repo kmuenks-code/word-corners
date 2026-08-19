@@ -15,7 +15,8 @@ export function renderCornerSymbol(cornerEl, corner) {
 }
 
 // blankIndices marks which character positions in `word` were placed via
-// the blank/wildcard letter — those render gold via .blank-letter.
+// the blank/wildcard letter — those render in the bubbles' bright teal via
+// .blank-letter, matching the bubble they came from.
 export function renderCorner(cornerEl, word, blankIndices = []) {
   const wordEl = cornerEl.querySelector('.word');
   wordEl.innerHTML = '';
@@ -36,8 +37,16 @@ export function renderLetter(letterEl, letter) {
   letterEl.textContent = letter;
 }
 
-export function renderScore(scoreEl, score) {
+// fillEl fills left-to-right with progress toward the next blank-tile
+// threshold (score % interval). A score that lands exactly on a threshold
+// has already earned that blank, so it reads as 0% progress toward the
+// next one rather than 100% toward the one just paid out.
+export function renderScore(scoreEl, score, fillEl, blankScoreInterval) {
   scoreEl.textContent = score;
+  if (fillEl) {
+    const progress = (score % blankScoreInterval) / blankScoreInterval;
+    fillEl.style.width = `${progress * 100}%`;
+  }
 }
 
 export function flashInvalid(cornerEl) {
@@ -47,16 +56,31 @@ export function flashInvalid(cornerEl) {
   cornerEl.classList.add('invalid');
 }
 
-export function showWordFeedback(cornerEl, wordLength, points, blankAwarded = false) {
+export function showWordFeedback(cornerEl, wordLength, points) {
   const existing = cornerEl.querySelector('.word-feedback');
   if (existing) existing.remove();
 
   const feedbackEl = document.createElement('div');
   feedbackEl.className = 'word-feedback';
-  feedbackEl.innerHTML = `<span class="word-feedback-length">${wordLength} Letter Word</span><span class="word-feedback-points">+${points} Points</span>${blankAwarded ? '<span class="word-feedback-blank">Blank Tile Earned</span>' : ''}`;
+  feedbackEl.innerHTML = `<span class="word-feedback-length">${wordLength} Letter Word</span><span class="word-feedback-points">+${points} Points</span>`;
   cornerEl.appendChild(feedbackEl);
 
   feedbackEl.addEventListener('animationend', () => feedbackEl.remove());
+}
+
+// A blank award is about total score, not the word that happened to cross
+// the threshold, so its feedback lives next to the score box instead of in
+// the corner that submitted — see #blank-toast-anchor in index.html.
+export function showBlankEarnedToast(anchorEl) {
+  const existing = anchorEl.querySelector('.blank-toast');
+  if (existing) existing.remove();
+
+  const toastEl = document.createElement('div');
+  toastEl.className = 'blank-toast';
+  toastEl.textContent = 'Blank Earned';
+  anchorEl.appendChild(toastEl);
+
+  toastEl.addEventListener('animationend', () => toastEl.remove());
 }
 
 export function renderUndoAvailability(undoBtn, available) {
@@ -123,12 +147,15 @@ export function hideBlankPicker(pickerEl) {
   pickerEl.hidden = true;
 }
 
-export function renderBlankBubble(slotEl, pending) {
-  slotEl.hidden = !pending;
-}
-
-export function setChoicesBlocked(bubbleEls, blocked) {
-  bubbleEls.forEach((el) => el.classList.toggle('blocked', blocked));
+// The blank slot joins the center row only while the player is holding at
+// least one, and takes a ×N badge from the second onward — one bubble
+// stands for the whole pile, since they're interchangeable. The `hidden`
+// attribute set here is also what collapses the row's fifth grid column,
+// via a :has() rule in the stylesheet — nothing else needs telling.
+export function renderBlankBubble(slotEl, countEl, count) {
+  slotEl.hidden = count === 0;
+  countEl.hidden = count < 2;
+  countEl.textContent = `×${count}`;
 }
 
 /* ---------- Splash ---------- */

@@ -15,9 +15,17 @@
     <span id="env-badge" hidden></span>
     <img id="game-logo" src="img/logo.png" alt="Word Corners">
     <div id="score-badge">
+      <!-- Width set by js/ui.js (renderScore) to the player's progress
+           toward the next blank-tile threshold. Sits behind the label/value
+           text, inside the badge's own rounded corners. -->
+      <div id="score-fill"></div>
       <span id="score-label">Score</span>
       <span id="score-value">0</span>
     </div>
+    <!-- Positioned relative to #top-bar, right-aligned to sit under
+         #score-badge. js/ui.js (showBlankEarnedToast) drops a pill in here
+         that rises and fades on its own animation, then removes itself. -->
+    <div id="blank-toast-anchor" aria-hidden="true"></div>
   </header>
 
   <!-- .corner-mark is filled with its shape's inline SVG by main.js at
@@ -90,13 +98,19 @@
         </div>
       </div>
 
-      <div class="row-slot" id="blank-slot" hidden>
-        <div class="choice-bubble blank-bubble" id="blank-bubble">
-          <svg class="blank-star" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-            <path d="M12 2.5l2.9 6.4 7 .8-5.3 4.8 1.5 6.9L12 17.9l-6.1 3.5 1.5-6.9-5.3-4.8 7-.8z"/>
-          </svg>
+      <!-- A third choice bubble, shown for as long as the player is holding
+           an unused blank. Same size and same teal as the other two because
+           it is the same kind of thing — a letter you can drag whenever you
+           want one — and labelled with an underscore rather than a letter.
+           No .row-label: the two choice bubbles have none either, and one
+           here would make this the tallest column in the row and push the
+           whole thing into the per-corner objective flags on a short phone.
+           #blank-count only appears from the second blank onward. -->
+      <div class="row-slot choice-slot" id="blank-slot" hidden>
+        <div class="choice-bubble" id="blank-bubble">
+          <span class="choice-letter" id="blank-mark" role="img" aria-label="Blank letter"></span>
+          <span id="blank-count" hidden></span>
         </div>
-        <span class="row-label">Blank</span>
       </div>
     </div>
   </div>
@@ -117,8 +131,9 @@
        every game mode — no scoring formula, no objective rules, no
        strategy — so one overlay serves Endless and Objective alike. Each
        row leads with a glyph built from the board's own vocabulary (teal
-       choice bubble, cream corner tile with its shape badge, gold blank
-       star, closed rose tile) so a rule points at the thing it describes. -->
+       choice bubble, cream corner tile with its shape badge, the blank's
+       underscore bubble, closed rose tile) so a rule points at the thing it
+       describes. -->
   <div id="how-to-play" hidden>
     <div id="how-to-play-card">
       <div id="how-to-play-title">How to Play</div>
@@ -177,17 +192,13 @@
 
         <li class="htp-row">
           <span class="htp-glyph" aria-hidden="true">
-            <span class="htp-star">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2.5l2.9 6.4 7 .8-5.3 4.8 1.5 6.9L12 17.9l-6.1 3.5 1.5-6.9-5.3-4.8 7-.8z"/>
-              </svg>
-            </span>
+            <span class="htp-blank"><span class="htp-blank-mark"></span></span>
           </span>
           <span class="htp-body">
             <span class="htp-title">Earn a blank</span>
-            <span class="htp-text">Score a word of 5 letters or more and you win a gold
-              blank. Drag it to a corner and pick any letter you like &mdash; but you
-              have to use it right away.</span>
+            <span class="htp-text">Every 25 points you score wins a blank. It waits in the
+              center as a third letter until you want it &mdash; drag it to a corner and
+              pick any letter you like.</span>
           </span>
         </li>
 
@@ -256,10 +267,14 @@
     <button id="new-game-btn" type="button">New Game</button>
   </div>
 
+  <!-- Opened by dropping a blank on a corner. Dismissible — backdrop or the
+       Cancel button — which puts the blank back in hand unspent; a blank
+       waits as long as the player likes, so there is nothing to force here. -->
   <div id="blank-picker" hidden>
     <div id="blank-picker-card">
       <div id="blank-picker-title">Choose a Letter</div>
       <div id="blank-picker-grid"></div>
+      <button id="blank-picker-cancel" type="button">Cancel</button>
     </div>
   </div>
 
