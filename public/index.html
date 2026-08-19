@@ -14,19 +14,29 @@
          flashes a badge before the module runs. -->
     <span id="env-badge" hidden></span>
     <img id="game-logo" src="img/logo.png" alt="Word Corners">
-    <div id="score-badge">
+    <!-- A button so it opens #score-popover on tap, same as #hint-bar opens
+         the rules overlay. -->
+    <button id="score-badge" type="button" aria-label="Score, and next blank letter threshold">
       <!-- Width set by js/ui.js (renderScore) to the player's progress
            toward the next blank-tile threshold. Sits behind the label/value
            text, inside the badge's own rounded corners. -->
       <div id="score-fill"></div>
       <span id="score-label">Score</span>
       <span id="score-value">0</span>
-    </div>
+    </button>
     <!-- Positioned relative to #top-bar, right-aligned to sit under
          #score-badge. js/ui.js (showBlankEarnedToast) drops a pill in here
          that rises and fades on its own animation, then removes itself. -->
     <div id="blank-toast-anchor" aria-hidden="true"></div>
   </header>
+
+  <!-- What #score-badge opens: same dismissible-backdrop-and-card recipe as
+       #corner-popover, anchored under the badge instead of a corner flag. -->
+  <div id="score-popover" hidden>
+    <div id="score-popover-card">
+      <p id="score-popover-text"></p>
+    </div>
+  </div>
 
   <!-- .corner-mark is filled with its shape's inline SVG by main.js at
        startup (renderCornerSymbol, js/ui.js) rather than hand-written per

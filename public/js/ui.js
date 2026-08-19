@@ -410,6 +410,17 @@ export function hideCornerPopover(popoverEl) {
   popoverEl.hidden = true;
 }
 
+// The popover #score-badge opens: a single line naming the next blank-tile
+// threshold in points.
+export function showScorePopover(popoverEl, textEl, nextThreshold) {
+  textEl.textContent = `Next blank letter at ${nextThreshold} points`;
+  popoverEl.hidden = false;
+}
+
+export function hideScorePopover(popoverEl) {
+  popoverEl.hidden = true;
+}
+
 export function showObjectivePanel(panelEl) {
   panelEl.hidden = false;
 }

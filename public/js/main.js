@@ -61,6 +61,8 @@ import {
   pulseCornerFlag,
   showCornerPopover,
   hideCornerPopover,
+  showScorePopover,
+  hideScorePopover,
   renderObjectiveList,
   showObjectivePanel,
   hideObjectivePanel,
@@ -123,6 +125,9 @@ let gameRecorded = false;
 const cornerEls = Array.from(document.querySelectorAll('.corner'));
 const scoreEl = document.getElementById('score-value');
 const scoreFillEl = document.getElementById('score-fill');
+const scoreBadgeEl = document.getElementById('score-badge');
+const scorePopoverEl = document.getElementById('score-popover');
+const scorePopoverTextEl = document.getElementById('score-popover-text');
 const blankToastAnchorEl = document.getElementById('blank-toast-anchor');
 const finalScoreEl = document.getElementById('final-score');
 const finalScoreRowEl = document.getElementById('final-score-row');
@@ -301,6 +306,18 @@ function toggleCornerPopover(corner) {
 function closeCornerPopover() {
   openFlagCorner = null;
   hideCornerPopover(cornerPopoverEl);
+}
+
+// Tapping the score badge opens a one-line popover naming the next
+// blank-tile threshold — same toggle-or-dismiss behavior as a corner flag.
+function toggleScorePopover() {
+  if (!scorePopoverEl.hidden) {
+    hideScorePopover(scorePopoverEl);
+    return;
+  }
+  const nextThreshold =
+    (Math.floor(state.score / BLANK_SCORE_INTERVAL) + 1) * BLANK_SCORE_INTERVAL;
+  showScorePopover(scorePopoverEl, scorePopoverTextEl, nextThreshold);
 }
 
 // ---------- Splash ----------
@@ -713,6 +730,9 @@ async function start() {
     if (btn) toggleCornerPopover(btn.dataset.corner);
   });
   cornerPopoverEl.addEventListener('click', closeCornerPopover);
+
+  scoreBadgeEl.addEventListener('click', toggleScorePopover);
+  scorePopoverEl.addEventListener('click', () => hideScorePopover(scorePopoverEl));
 
   objectiveFlagEl.addEventListener('click', () => showObjectivePanel(objectivePanelEl));
   objectivePanelCloseBtn.addEventListener('click', () => hideObjectivePanel(objectivePanelEl));
