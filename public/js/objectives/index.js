@@ -11,6 +11,8 @@ export {
   GAME_MODES,
   OBJECTIVE_POOL,
   POINT_BUDGETS,
+  MIN_DEMAND,
+  dealDemand,
   defineMode,
   challenge,
   createMode,

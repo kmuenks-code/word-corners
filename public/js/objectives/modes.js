@@ -147,10 +147,75 @@ export function challenge({
 // one 4-cost objective, or two 2-cost ones, or a 3 and a 1, and so on.
 // This is the single knob for how much a tier asks of the player.
 export const POINT_BUDGETS = Object.freeze({
+  easy: 6,
+  medium: 10,
+  hard: 16,
+  expert: 20,
+});
+
+// ---------------------------------------------------------------------
+// DEMAND: how many words a deal actually forces the player to bank.
+//
+// The second thing a deal is measured by, and the one `cost` cannot see.
+// Cost prices each row against `expected`, so a row can be dear because its
+// property is *rare* rather than because it asks for volume — "score a
+// 5-letter word" costs 4 and is one lucky word. A budget spent entirely on
+// those buys a panel of six 0/1 rows that a normal game clears in four words
+// without ever feeling pressed.
+//
+// Demand allows for overlap, which is why it is not a sum of counts:
+//
+//   - a global row is fed by words scored *anywhere*, so several global rows
+//     are satisfied in parallel and only the largest count binds;
+//   - corners are disjoint, so their demands genuinely add;
+//   - a global row and the corner rows beneath it are also fed in parallel —
+//     hence the max of the two, not their sum.
+//
+// A lower bound rather than a true cost: it assumes one word can satisfy
+// every row it is eligible for, which needs the properties to be compatible
+// (one word is not both 3 letters and 5). Deliberately the pessimistic
+// direction — it never claims a deal is more demanding than it is, so a floor
+// built on it is a floor the player really has to clear.
+export function dealDemand(rows) {
+  let global = 0;
+  const corners = new Map();
+  rows.forEach(({ params: { scope, count } }) => {
+    if (scope === GLOBAL_SCOPE) global = Math.max(global, count);
+    else corners.set(scope, Math.max(corners.get(scope) ?? 0, count));
+  });
+  let cornerTotal = 0;
+  corners.forEach((count) => {
+    cornerTotal += count;
+  });
+  return Math.max(global, cornerTotal);
+}
+
+// The fewest words each tier may be won in. This is the knob for "make the
+// game longer", where POINT_BUDGETS is the knob for "make it harder" — two
+// different things that cost alone was being asked to express at once.
+//
+// Measured before this existed, median demand ran 3 / 3 / 4 / 5 across the
+// four tiers: Easy and Medium were indistinguishable, and an Expert deal was
+// as often as not a five-word game. Since a deal must still spend its budget
+// exactly, a floor here is what makes the selector reach for a higher
+// `count` — the only lever that buys words rather than luck.
+//
+// The numbers read best against GLOBAL_VOLUME, the 12 words a game the cost
+// model expects. Mean demand at these floors comes to 43% / 70% / 94% / 114%
+// of that, which is the ladder the tiers are meant to be: Easy comfortably
+// inside a normal game, Hard about a whole one, Expert past it.
+//
+// **15 is the ceiling**, and it is not arbitrary — MAX_COST 6 caps a global
+// row at 14 words and a corner at 4, so no affordable deal can demand more.
+// Expert sits at 13 rather than 14 deliberately: at 14 every deal saturates
+// to exactly 15 and the tier stops varying. Wanting more than this means
+// raising MAX_COST, which is a statement about asking for more words than a
+// player produces — read its note in generator.js first.
+export const MIN_DEMAND = Object.freeze({
   easy: 4,
-  medium: 8,
-  hard: 12,
-  expert: 16,
+  medium: 7,
+  hard: 10,
+  expert: 13,
 });
 
 // How many objectives one deal may contain, however cheap they are. The
@@ -221,8 +286,24 @@ function shuffled(items, random) {
 // what it always meant.
 //
 // `chosen` is mutated and restored around each branch rather than copied.
-function findCombination(families, index, remaining, need, byFamily, random, dearest, chosen = []) {
-  if (need === 0) return remaining === 0 ? [] : null;
+function findCombination(
+  families,
+  index,
+  remaining,
+  need,
+  byFamily,
+  random,
+  dearest,
+  minDemand,
+  chosen = []
+) {
+  // The demand floor is checked HERE and only here, unlike the possibility
+  // check, which prunes. It has to be: demand rises monotonically as rows are
+  // added, so a partial deal below the floor may still reach it and nothing
+  // can be rejected early. Bounding the demand still reachable from a partial
+  // deal would prune, but it means an upper bound over every remaining family
+  // at every node — more work than the leaf test it would save.
+  if (need === 0) return remaining === 0 && dealDemand(chosen) >= minDemand ? [] : null;
   if (remaining < need) return null; // every row costs at least 1
   if (remaining > need * dearest) return null; // ...and at most `dearest`
   if (index >= families.length) return null;
@@ -241,12 +322,23 @@ function findCombination(families, index, remaining, need, byFamily, random, dea
       byFamily,
       random,
       dearest,
+      minDemand,
       chosen
     );
     chosen.pop();
     if (rest) return [row, ...rest];
   }
-  return findCombination(families, index + 1, remaining, need, byFamily, random, dearest, chosen);
+  return findCombination(
+    families,
+    index + 1,
+    remaining,
+    need,
+    byFamily,
+    random,
+    dearest,
+    minDemand,
+    chosen
+  );
 }
 
 // The dearest row in the pool, which bounds how much `need` rows can cover.
@@ -269,13 +361,17 @@ const dealSizeCache = new WeakMap();
 // search is exhaustive and the incompatibility relation is symmetric, so the
 // random order only affects which combination comes back, never whether one
 // exists.
-export function feasibleDealSizes(pool, budget) {
+export function feasibleDealSizes(pool, budget, minDemand = 0) {
   let byBudget = dealSizeCache.get(pool);
   if (!byBudget) {
     byBudget = new Map();
     dealSizeCache.set(pool, byBudget);
   }
-  const cached = byBudget.get(budget);
+  // Keyed on both numbers now: the same budget admits different sizes under
+  // different demand floors, and a cache keyed on budget alone would hand a
+  // caller the other tier's answer.
+  const key = `${budget}|${minDemand}`;
+  const cached = byBudget.get(key);
   if (cached) return cached;
 
   const byFamily = groupByFamily(pool);
@@ -284,9 +380,11 @@ export function feasibleDealSizes(pool, budget) {
   const sizes = [];
   const largest = Math.min(MAX_DEAL_SIZE, families.length, budget);
   for (let need = 1; need <= largest; need++) {
-    if (findCombination(families, 0, budget, need, byFamily, () => 0, dearest)) sizes.push(need);
+    if (findCombination(families, 0, budget, need, byFamily, () => 0, dearest, minDemand)) {
+      sizes.push(need);
+    }
   }
-  byBudget.set(budget, sizes);
+  byBudget.set(key, sizes);
   return sizes;
 }
 
@@ -295,18 +393,19 @@ export function feasibleDealSizes(pool, budget) {
 // Picks the deal size first, uniformly among the sizes that can be spent
 // exactly, then finds a combination of that size. So an Easy budget of 4 is
 // as likely to be one 4-cost objective as it is four 1-cost ones.
-export function selectWithinBudget(pool, budget, random = Math.random) {
+export function selectWithinBudget(pool, budget, random = Math.random, minDemand = 0) {
   const byFamily = groupByFamily(pool);
-  const sizes = feasibleDealSizes(pool, budget);
+  const sizes = feasibleDealSizes(pool, budget, minDemand);
   if (sizes.length === 0) {
     throw new Error(
-      `No combination of objectives costs exactly ${budget}. ` +
-        `Available costs: ${[...new Set(pool.map((r) => r.cost))].sort((a, b) => a - b).join(', ')}`
+      `No combination of objectives costs exactly ${budget} while demanding at least ` +
+        `${minDemand} words. Available costs: ` +
+        `${[...new Set(pool.map((r) => r.cost))].sort((a, b) => a - b).join(', ')}`
     );
   }
   const need = sizes[Math.floor(random() * sizes.length)];
   const families = shuffled([...byFamily.keys()], random);
-  return findCombination(families, 0, budget, need, byFamily, random, dearestCost(pool));
+  return findCombination(families, 0, budget, need, byFamily, random, dearestCost(pool), minDemand);
 }
 
 // ---------------------------------------------------------------------
@@ -336,6 +435,7 @@ export const GAME_MODES = Object.freeze([
     blurb: 'Complete your goals before the board closes.',
     pool: OBJECTIVE_POOL,
     budgets: POINT_BUDGETS,
+    minDemand: MIN_DEMAND,
     usesDifficulty: true,
   },
 ]);
@@ -385,11 +485,12 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
 
   if (mode.pool) {
     const budget = mode.budgets?.[tier] ?? 0;
+    const minDemand = mode.minDemand?.[tier] ?? 0;
     return defineMode({
       id: mode.id,
       label,
       difficulty: tier,
-      selectObjectives: () => selectWithinBudget(mode.pool, budget, random),
+      selectObjectives: () => selectWithinBudget(mode.pool, budget, random, minDemand),
       limits: mode.limits,
       ...flags,
     });
@@ -442,11 +543,22 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
       // exhaustive over families *and* over the possibility check, so an
       // empty result means no compatible deal spends this budget exactly —
       // not that the roll was unlucky.
-      if (feasibleDealSizes(mode.pool, budget).length === 0) {
+      const minDemand = mode.minDemand?.[tier] ?? 0;
+      if (feasibleDealSizes(mode.pool, budget, minDemand).length === 0) {
+        // Which of the two constraints is unsatisfiable matters a lot to
+        // whoever is fixing it, and they fail identically, so say. A budget
+        // that spends fine on its own but not against the floor wants
+        // MIN_DEMAND lowered or POINT_BUDGETS raised; one that can't spend at
+        // all is the older failure and wants the cost bounds.
+        const spendable = feasibleDealSizes(mode.pool, budget).length > 0;
         throw new Error(
-          `Game mode "${mode.id}" cannot spend its ${tier} budget of ${budget} exactly ` +
-            `with at most ${MAX_DEAL_SIZE} compatible objectives, one per family. ` +
-            'Adjust the budget, or the cost bounds in generator.js.'
+          spendable
+            ? `Game mode "${mode.id}" can spend its ${tier} budget of ${budget} exactly, but ` +
+              `no such deal demands ${minDemand} words. Lower MIN_DEMAND.${tier} or raise ` +
+              `POINT_BUDGETS.${tier}.`
+            : `Game mode "${mode.id}" cannot spend its ${tier} budget of ${budget} exactly ` +
+              `with at most ${MAX_DEAL_SIZE} compatible objectives, one per family. ` +
+              'Adjust the budget, or the cost bounds in generator.js.'
         );
       }
     });

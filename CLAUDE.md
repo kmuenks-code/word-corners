@@ -513,27 +513,38 @@ Each is edited independently of the others:
 | a scope or constraint | one entry in `definitions.js` + its handling in the cost model | nothing else changes |
 | how a whole class is priced | one constant in `generator.js` | the affected ladders re-derive |
 | a game mode | one row in `GAME_MODES` | appears on the splash automatically |
-| a difficulty tier | one entry in `difficulty.js` + one number in `POINT_BUDGETS` | validator rejects a budget the pool can't spend |
-| how demanding a tier is | one number in `POINT_BUDGETS` | nothing else changes |
+| a difficulty tier | one entry in `difficulty.js` + one number each in `POINT_BUDGETS` and `MIN_DEMAND` | validator rejects a budget the pool can't spend, or can't spend against the floor |
+| how *hard* a tier's goals are | one number in `POINT_BUDGETS` | nothing else changes |
+| how *long* a tier plays | one number in `MIN_DEMAND` | nothing else changes |
 
 A mode names *which* pool is available; the tier supplies only *how much*
 may be spent. That separation is why "swap in objectives by mode and
 difficulty" is `createMode(id, difficulty)` and nothing more.
 
 ### The Objective mode
-Deals a random set costing **exactly** the tier's budget (Easy 4, Medium 8,
-Hard 12, Expert 16 — in `POINT_BUDGETS`, meant to be edited). Four things
-worth knowing:
+Deals a random set costing **exactly** the tier's budget *and* demanding at
+least the tier's word floor. Two tables, not one:
+
+| | budget (`POINT_BUDGETS`) | word floor (`MIN_DEMAND`) | mean demand, vs. the 12 words/game the model expects |
+|---|---|---|---|
+| easy | 6 | 4 | 5.2 — 43% |
+| medium | 10 | 7 | 8.4 — 70% |
+| hard | 16 | 10 | 11.3 — 94% |
+| expert | 20 | 13 | 13.6 — 114% |
+
+Both are meant to be edited. Five things worth knowing:
 
 - **A tier fixes total cost, not the number of objectives.** Easy is one
-  4-cost goal, or two 2s, or a 3 and a 1, or four 1s. That's the point of
-  the design.
+  6-cost goal, or two 3s, or a 4 and two 1s. That's the point of the design.
+- **Cost and demand are different questions, and cost cannot answer both.**
+  See "Why a word floor" below — this is the newer half of the design and the
+  one that decides whether a tier actually *plays* hard.
 - **Deal size is picked first**, uniformly among the sizes that can be
   spent exactly, and only then is a combination found. Without that the
   search biases hard toward using every family — the "take a row" branches
   vastly outnumber the single "skip" at each step — and Easy would be four
   1-cost objectives almost every time. `MAX_DEAL_SIZE` (6) caps it, since a
-  budget of 16 would otherwise admit sixteen 1-cost goals; the old pool
+  budget of 20 would otherwise admit twenty 1-cost goals; the old pool
   capped this accidentally, at the seven types it happened to contain.
 - **At most one row per *family*.** A family is a combination with the count
   left off, so rows sharing one are alternative tunings and nobody is dealt
@@ -545,7 +556,58 @@ worth knowing:
 `MAX_COST` (6) does double duty: because the target ladder is linear in
 `count / expected`, the cap *is* a statement about how far past their
 expected output a player can be asked to go — at cost 6, 1.2×. It also sets
-the floor on deal size, since Expert's 16 can't be spent on fewer than three.
+the floor on deal size, since Expert's 20 can't be spent on fewer than four.
+
+### Why a word floor, when there is already a budget
+Because **cost cannot see how long a deal takes to play**, and that turned
+out to be the thing "difficulty" mostly means here.
+
+`cost` is `TARGET_COST_SCALE × count / expected`. A row can therefore be dear
+because its property is *rare* rather than because it asks for volume: "score
+a 5-letter word" costs 4 and is one lucky word. Spend a whole Expert budget on
+rows like that and you get six 0/1 lines that a normal game clears in four
+words, having never once been pressed. Measured on the shipped 0.13.0 pool,
+median demand ran **3 / 3 / 4 / 5** across the four tiers — Easy and Medium
+were not distinguishable at all, and the budget had quadrupled between them.
+
+So a deal is now measured on two axes. Cost asks *how hard is each goal*;
+demand asks *how much of a game do these goals add up to*. Raising budgets
+alone does not fix it — that buys dearer rows, and dearer still means rarer.
+
+**`dealDemand` is not a sum of counts**, and that is the whole subtlety:
+
+- a global row is fed by words scored *anywhere*, so several global rows fill
+  in parallel and only the largest binds;
+- corners are disjoint, so their demands genuinely add;
+- a global row and the corner rows under it also fill in parallel — hence the
+  max of the two, never their sum.
+
+Sum-of-counts overstates a deal badly. The screenshot that prompted this
+scored 9 by that measure and 4 by this one, and 4 was the truth: one 4-letter
+word in the ▲ corner fed three of its six rows at once.
+
+It is a **lower bound**, deliberately. It assumes one word can satisfy every
+row it is eligible for, which needs those rows to be compatible — one word is
+not both 3 letters and 5. Erring pessimistic is what makes a floor built on it
+a floor the player really has to clear.
+
+Three things to know before touching the numbers:
+
+- **The floor is checked at the search leaf, not as a prune.** Demand rises
+  monotonically as rows are added, so a partial deal below the floor may still
+  reach it and nothing can be rejected early. This is the one constraint in
+  the selector that *cannot* be a pruning predicate, unlike the possibility
+  check. Exhaustiveness is unaffected, so `null` still proves infeasible.
+- **15 is the hard ceiling.** `MAX_COST` 6 caps a global row at 14 words and a
+  corner at 4, so no affordable deal demands more. Expert sits at 13 rather
+  than 14 on purpose: at 14 every deal saturates to exactly 15 and the tier
+  stops varying at all.
+- **A floor too near a budget's reach starves variety.** Easy at budget 4 with
+  a floor of 4 had only ~113 possible deals and repeated visibly; raising the
+  budget to 6 took it to ~1000+. If a tier starts feeling samey, that is the
+  first thing to check — and the failing validator message distinguishes
+  "can't spend" from "can't spend *and* reach the floor" for exactly this
+  reason.
 
 The module-load validator proves every tier spendable, and still means
 something: the search is exhaustive over families *and* over the possibility
@@ -841,7 +903,10 @@ separates them.** Slice by it before reading any rate:
 - **0.12.0** — generated rows including standalone limits. Every `fewerThan`
   row here is measuring a mechanic that no longer exists, and its ~100%
   completion rate is the bug that ended it, not evidence about pricing.
-- **0.13.0 onward** — targets only, with exclusions. `params.exclude` is new
+- **0.13.0** — targets with exclusions, but budgets 4/8/12/16 and no word
+  floor: median demand 3 / 3 / 4 / 5, so most deals played far shorter than
+  their tier suggests.
+- **0.14.0 onward** — budgets 6/10/16/20 against MIN_DEMAND. `params.exclude` is new
   in this cohort and reads `""` on an unmodified row.
 
 ## Backend
