@@ -104,18 +104,25 @@ function nounFor(params, count) {
 // spent on the limit's "fewer"/"no". In a list where every other line asks
 // the player to score *more*, the inverted sense is the one thing worth
 // making impossible to skim past.
-// The exclusion clause, or '' — "…, __none__ starting with a vowel".
+// The exclusion clause, or '' — "…, not starting with a vowel".
 //
-// This is where the emphasis marker is spent now that a standalone limit is
-// no longer generated, and for the same reason it was spent on "fewer"/"no"
-// before: in a list where every clause asks the player to score *more*, the
-// one inverted word is the thing worth making impossible to skim past. A
-// singular reads "__not__ starting with a vowel", since "none" needs a plural
-// to be none of.
-function excludeClause(params, count) {
+// "not" at both counts, and deliberately NOT emphasized, though the inverted
+// word is exactly what the `__x__` marker exists for. Two findings from
+// reading it on a real panel:
+//
+//   - "none" reads as a *prohibition* — as though scoring one would end the
+//     run there and then. That was true of the limit this replaced and is not
+//     true here: an excluded word simply doesn't count toward the objective.
+//     Wording that implies a penalty the game won't apply is worse than no
+//     wording at all.
+//   - the underline was carrying the same false weight, so it goes with it.
+//
+// This leaves the emphasis marker with no consumer. Kept in ui.js rather than
+// removed — it costs one regex and is the obvious tool for the next clause
+// that genuinely inverts.
+function excludeClause(params) {
   const modifier = params.exclude ? propertyModifier(params.exclude) : null;
-  if (!modifier) return '';
-  return count === 1 ? `, __not__ ${modifier}` : `, __none__ ${modifier}`;
+  return modifier ? `, not ${modifier}` : '';
 }
 
 function describe(params) {
@@ -126,8 +133,8 @@ function describe(params) {
       : `Score __fewer__ than ${count} ${nounFor(params, count)}`;
   }
   return count === 1
-    ? `Score a ${nounFor(params, 1)}${excludeClause(params, 1)}`
-    : `Score ${count} or more ${nounFor(params, count)}${excludeClause(params, count)}`;
+    ? `Score a ${nounFor(params, 1)}${excludeClause(params)}`
+    : `Score ${count} or more ${nounFor(params, count)}${excludeClause(params)}`;
 }
 
 // A word counts when it matches the property *and* landed in scope. Scope is

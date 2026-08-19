@@ -663,13 +663,22 @@ it would make a property depend on a game module. They agree today and are
 free to diverge.
 
 **Description markup:** a `describe()` string may wrap one word in
-`__like this__` to call it out, which `ui.js` renders as an underline. It is
-spent on the exclusion clause's "none"/"not" — and was spent on the limit's
-"fewer"/"no" before that, for exactly the same reason: in a list where every
-other clause asks for *more*, the one inverted word is what's worth making
-impossible to skim past. A cross-file contract between `definitions.js` and
-the renderer — worth knowing before writing a description containing literal
-underscores.
+`__like this__` to call it out, which `ui.js` renders as an underline. **It
+currently has no consumer.** It was spent on the limit's "fewer"/"no", and
+briefly on the exclusion clause's "none" — both dropped, the second on
+purpose:
+
+> An exclusion clause reads "…, **not** starting with a vowel", unemphasized.
+> "none" reads as a *prohibition*, as though scoring one would end the run.
+> That was true of the limit this replaced and is false here — an excluded
+> word simply doesn't count. The underline carried the same false weight, so
+> it went too. **Copy that implies a penalty the game won't apply is worse
+> than no copy at all**, and this is the shape of mistake to watch for
+> anywhere the old limit's vocabulary gets reused.
+
+The marker stays in `ui.js` for the next clause that genuinely inverts. It is
+a cross-file contract between `definitions.js` and the renderer — worth
+knowing before writing a description containing literal underscores.
 
 ### Undo is a replay, not a reversal
 The decision everything else follows from. Making every objective implement
