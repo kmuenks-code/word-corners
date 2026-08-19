@@ -298,22 +298,23 @@ chosen difficulty. Endless is the same runtime with an empty objective
 list, which the runtime detects and skips its bookkeeping for.
 
 **The catalog is generated, not written.** There is exactly one objective
-definition, and every goal the game can set is that one sentence with three
+definition, and every goal the game can set is that one sentence with four
 blanks filled in:
 
 ```
-Score {constraint} {count} {property} {in scope}
+Score {constraint} {count} {property} {in scope}{, none excluded}
 ```
 
 | axis | lives in | values today |
 |---|---|---|
 | property | `properties.js` | any word; exactly N letters; N+ letters; starts with a vowel; ends in a vowel |
+| exclude | `properties.js` | nothing, or a property whose words then don't count |
 | scope | `definitions.js` | global, or one of the four corners |
-| constraint | `definitions.js` | at least N, fewer than N |
+| constraint | `definitions.js` | at least N (**fewer than N is no longer generated** — see "Why limits became exclusions") |
 
 `generator.js` enumerates every combination, prices each, and drops the ones
 its cost model puts out of range. Adding a property therefore adds its whole
-column of objectives — every scope, both constraints, a full ladder of
+column of objectives — every scope, every exclusion, a full ladder of
 counts — and nothing else in the system changes.
 
 This replaced a hand-written catalog of seven bespoke types and forty priced
@@ -338,18 +339,74 @@ tracker doesn't have, and any deal containing one could only ever be won by
 playing the board all the way closed, never early. At-least and fewer-than
 cover the ground between them.
 
-### Limits are corner-only
-`fewerThan` is generated for corner scopes only. A global "score fewer than
-N words" constrains the whole board rather than asking something of a place
-on it, and it contradicts most targets outright.
+### Why limits became exclusions
+The standalone limit — `fewerThan` at a corner scope, "score fewer than 3
+words here" — **is no longer generated.** It was the system's one free lunch,
+and the reason is worth keeping because it is a general trap in any priced
+catalog.
 
-### The constraint decides the tracker semantics
-This is the tidiest thing to fall out of the three axes. `atLeast` is a
-target: it completes on reaching its count, which is what lets a deal be won
-with corners still open. `fewerThan` is a limit: it fails on reaching its
-count and can never complete early, because surviving to game end *is* the
-condition. So `enduring` stopped being a per-type flag and became a function
-of params — the one change the definition contract needed.
+A limit's cost came out of `ABANDON_CORNER_COST × forgone`, which prices the
+words the player *gives up* by respecting it. That is only a real price if
+something makes them want to score in that corner. Nothing in a deal did. So
+a limit on a corner carrying no target cost budget and asked nothing: the
+player simply never played there. Measured over 2,000 deals a tier:
+
+| | deals with a limit on a target-free corner | share of budget spent on targets | won by scoring ≤1 word |
+|---|---|---|---|
+| easy | 70% | 51% | 54% (22% needed **zero** words) |
+| medium | 79% | 64% | 19% |
+| hard | 62% | 81% | 3% |
+| expert | 60% | 85% | 3% |
+
+The general shape: **`cost` is priced per row, but a limit's difficulty is a
+property of the deal.** No number written in `generator.js` can be right for a
+row whose worth depends on what it was dealt beside.
+
+So the restriction moved *inside* the target as an `exclude` param — "score 3
+words here, none starting with a vowel" is one objective, not two. It cannot
+fail to bind, because it narrows the very words the player is required to
+produce. After the change: Easy's ≤1-word deals went 54% → 1%, and median
+words per deal runs 5 / 7 / 8 / 9 across the four tiers.
+
+Two rules keep exclusions from taking over, both about reading rather than
+possibility, and both in `generator.js`:
+
+- **At most one exclusion per deal.** Avoiding a vowel start is only a ~12%
+  tax, so almost every family has an excluded twin at the same price and the
+  selector will happily deal four. Before this rule a Hard panel routinely
+  carried "…, none starting with a vowel" on three separate lines. One per
+  deal makes it read as the twist on this hand.
+- **`MIN_EXCLUSION_COUNT` is 2.** At count 1 an exclusion isn't a constraint,
+  it's a reroll — a failed attempt costs the player nothing, they just score
+  the next word instead.
+
+Length properties deliberately carry no `modifier` phrase and so can't be
+excluded: every length exclusion is a length property written the long way
+("no 3-letter words" *is* `lengthAtLeast 4`), and generating them would double
+the pool with synonyms.
+
+Rejected on the way here: a rule requiring each limit to sit on a corner that
+also carries a target. It fixes the same numbers, but the limit is then only
+live for as long as its target runs — and once the target completes the game
+is won and the limit is moot. It converges on the exclusion with more
+machinery.
+
+**The `fewerThan` machinery is still in the tree, unreachable from the pool**
+— one line in `generator.js` (`GENERATED_CONSTRAINTS`) reverses that. The
+constraint axis, `enduring`, `failed()`, the HUD countdown and the possibility
+check's limit branches are all intact and dead. Left rather than deleted while
+the change is being played; delete them together, or not at all, once it is
+settled. Note what deleting costs: blowing a limit was the only instant loss
+in the game, and an exclusion has no such teeth — an excluded word simply
+doesn't count.
+
+### The constraint axis decides the tracker semantics
+`atLeast` is a target: it completes on reaching its count, which is what lets
+a deal be won with corners still open. `fewerThan` is a limit: it fails on
+reaching its count and can never complete early, because surviving to game end
+*is* the condition. That is why `enduring` is a function of params rather than
+a per-type flag. With limits no longer generated every live objective is a
+target, so the `enduring` path never fires in a real game.
 
 ### Corner symbols
 Corners are identified to the player by **shape**, not direction: NW
@@ -401,9 +458,15 @@ axes interact:
   globally and a severe one in one corner.
 - What one more word costs depends on the property: +5 three-letter words is
   loose change, +5 six-letter words is most of a game.
+- An exclusion **narrows the property** rather than adding to it, so it
+  multiplies there too: `rarity(base) × (1 - avoidedRarity(excluded))`. The
+  two factors assume independence, which is not quite true (longer words end
+  in a vowel slightly less often) but is the honest default when every input
+  is already an estimate.
 - A limit **inverts both**. A rarer property makes a limit easier to keep,
   and a bigger allowance makes it easier still — the exact opposite of how
-  both read on a target.
+  both read on a target. (Retained but no longer generated — see "Why limits
+  became exclusions".)
 
 So everything is priced off one derived quantity: `expected`, the matching
 words a player would score in that scope without trying hard. That's
@@ -411,6 +474,15 @@ words a player would score in that scope without trying hard. That's
 priced on `count / expected`; a limit on how many of those expected words it
 forbids. Nine constants in `generator.js` and `properties.js`, all commented
 in place.
+
+**STEERING cuts both ways, and that is two functions not one.** A property a
+player can chase (the two vowel ones) is scored *more* often than its
+dictionary rate when chased and *less* often when avoided, by the same
+faculty. So each steerable property declares `rarity` and `avoided`, sitting
+either side of its dictionary rate, and an exclusion prices off `avoided`.
+Using the chased rate on both sides would price every exclusion as harder
+than it is — the one place in the model where a single sign error inverts the
+answer.
 
 **The numbers are estimated, and one round of correction has already
 happened.** The first pass assumed 30 words a game and a generous length
@@ -436,7 +508,8 @@ Each is edited independently of the others:
 
 | To add… | Edit | Cost |
 |---|---|---|
-| a word property | one entry in `properties.js` (predicate, noun phrase, rarity, and where it sits in the lattice) | every scope × constraint × count appears automatically |
+| a word property | one entry in `properties.js` (predicate, noun phrase, rarity, and where it sits in the lattice) | every scope × exclusion × count appears automatically |
+| an excludable property | a `modifier` phrase on that entry, plus an `avoided` rate if it's steerable | it becomes available as the exclusion on every other property |
 | a scope or constraint | one entry in `definitions.js` + its handling in the cost model | nothing else changes |
 | how a whole class is priced | one constant in `generator.js` | the affected ladders re-derive |
 | a game mode | one row in `GAME_MODES` | appears on the splash automatically |
@@ -502,11 +575,22 @@ are refused:
 1. **Contradiction.** A demands `m`, B forbids reaching `n`, and `m >= n`.
    Meeting A necessarily fails B. This is the unwinnable case, and the
    motivating example: "score 3 or more words starting with a vowel here"
-   beside "score fewer than 3 words here".
+   beside "score fewer than 3 words here". *Unreachable now that limits
+   aren't generated — kept with the rest of the limit machinery.*
 2. **A free target.** Both demand, A's demand is stricter, clearing it
-   clears B automatically. B took a slot and asked for nothing.
+   clears B automatically. B took a slot and asked for nothing. **This is the
+   only one of the three that fires today**, and it is what the exclusion
+   handling in `propertySubsumes` exists for.
 3. **A free limit.** Both forbid, B's is tighter, keeping it keeps A. Same
-   waste, other direction.
+   waste, other direction. *Also unreachable.*
+
+An exclusion narrows a predicate, so it can only help `a ⊆ b` — but the
+lattice refuses the general case rather than reasoning about it: containment
+holds only when `b` carries no exclusion, or carries the same one. "Words that
+aren't vowel-initial ⊆ words that don't end in a vowel" is false, and deciding
+that properly means intersecting predicates instead of comparing ids. Being
+conservative here costs a redundant pair slipping into a deal; being wrong
+here costs a deal that can't be won.
 
 Two decisions worth keeping:
 
@@ -537,9 +621,11 @@ Six, each ignorant of the one above it:
    `main.js` emits at seven moments. Payloads are **denormalized on
    purpose**: every field an objective could want is on the event, so no
    objective ever reads `gameState` and the architecture rule holds.
-2. **`properties.js` — the property axis.** Predicates over a scored word,
-   plus the two things only the generator needs: a `rarity` estimate, and
-   the implication lattice the possibility check runs on.
+2. **`properties.js` — the property and exclusion axes.** Predicates over a
+   scored word, plus the three things only the generator needs: a `rarity`
+   estimate (and its `avoided` twin for steerable properties), which
+   properties may be excluded, and the implication lattice the possibility
+   check runs on.
 3. **`difficulty.js` — the tiers.** A tier is *only a name here*; what it's
    worth lives in `POINT_BUDGETS`, so the splash, the budget table and any
    future tier-dependent feature key off this independently. `null` is a
@@ -578,10 +664,12 @@ free to diverge.
 
 **Description markup:** a `describe()` string may wrap one word in
 `__like this__` to call it out, which `ui.js` renders as an underline. It is
-spent on the limit's "fewer"/"no": in a list where every other line asks for
-*more*, the inverted sense is the one thing worth making impossible to skim
-past. A cross-file contract between `definitions.js` and the renderer —
-worth knowing before writing a description containing literal underscores.
+spent on the exclusion clause's "none"/"not" — and was spent on the limit's
+"fewer"/"no" before that, for exactly the same reason: in a list where every
+other clause asks for *more*, the one inverted word is what's worth making
+impossible to skim past. A cross-file contract between `definitions.js` and
+the renderer — worth knowing before writing a description containing literal
+underscores.
 
 ### Undo is a replay, not a reversal
 The decision everything else follows from. Making every objective implement
@@ -606,7 +694,9 @@ than silently replaying wrong.
 ### How a game ends
 - Completing **every** objective ends the game as a win immediately,
   corners still open (`endOnComplete`, default true).
-- **"Every objective" means every *target*.** Limits are not targets: they
+- **"Every objective" means every *target*.** Moot while no limits are
+  generated — every live objective is a target — but the reasoning is what
+  the retained limit path depends on. Limits are not targets: they
   never report complete mid-game, so counting them toward the win would mean
   a deal containing one could never be cleared early — the player would
   grind the board closed with the limit live throughout, where playing on can
@@ -634,7 +724,9 @@ the meter *and* the printed number — for normal objectives, which print as
 `n/goal`.
 
 An `enduring` objective is displayed as **a red countdown instead**, and
-gets **no meter at all**. Both halves of that are the same point: a limit
+gets **no meter at all**. *No pool row is enduring today, so this path is
+dead alongside the rest of the limit machinery — it is described as it would
+behave if limits came back.* Both halves of that are the same point: a limit
 isn't something to build toward, and a rising `0/3` beside a filling bar
 says the opposite. So it prints a bare `goal - 1 - current` — words still
 spendable there, since failing is `current >= goal` and "fewer than 3"
@@ -732,9 +824,16 @@ Note the live mode's `id` is the table row's id unsuffixed (`objective`,
 not `objective-hard`) — the tier is in `difficulty` beside it, so every
 Objective game groups without a `LIKE`.
 
-Rows written before `GAME_VERSION` 0.12.0 are a **separate cohort**: they
-carry the old bespoke types (`wordsOfLength`, `totalScore`, `cornerWordLimit`
-…) and are not comparable with generated ones. Slice by `game_version`.
+**There are now three cohorts, and `game_version` is the only thing that
+separates them.** Slice by it before reading any rate:
+
+- **before 0.12.0** — the old bespoke types (`wordsOfLength`, `totalScore`,
+  `cornerWordLimit` …), not comparable with generated rows at all.
+- **0.12.0** — generated rows including standalone limits. Every `fewerThan`
+  row here is measuring a mechanic that no longer exists, and its ~100%
+  completion rate is the bug that ended it, not evidence about pricing.
+- **0.13.0 onward** — targets only, with exclusions. `params.exclude` is new
+  in this cohort and reads `""` on an unmodified row.
 
 ## Backend
 One Worker serves both `public/` and the API on the same origin — so no
@@ -826,11 +925,22 @@ and internal changes don't need one. Keep it in step with `version` in
 `package.json`.
 
 ## Not yet built (ask before assuming scope)
-- **Playtesting the cost model.** The nine constants have had exactly one
-  round of correction, against a scripted player rather than a human — see
-  "The cost model". Two known-suspect numbers: `LENGTH_SHARE` for 4+ letters
-  (the script never makes long words, so it couldn't measure them) and the
-  `STEERING` factor on the two vowel properties (never measured at all).
+- **Deciding whether exclusions replaced limits or should sit beside them.**
+  The switch (0.13.0, see "Why limits became exclusions") is measured on deal
+  *shape* — the free-lunch deals are gone and the word counts ramp — but not
+  yet on how it plays. The open question is whether losing the instant-loss
+  limit costs the mode its only moment of jeopardy. Reversing is one line;
+  reintroducing limits *gated to a corner that also carries a target* is the
+  middle option that was considered and set aside. Decide from played games,
+  and delete the dead limit machinery only once decided.
+- **Playtesting the cost model.** The constants have had exactly one round of
+  correction, against a scripted player rather than a human — see "The cost
+  model". Three known-suspect numbers: `LENGTH_SHARE` for 4+ letters (the
+  script never makes long words, so it couldn't measure them), the `STEERING`
+  factor on the two vowel properties (never measured at all), and now the
+  independence assumption behind compound rarity. `db:objectives` prints
+  `exclude` as its own column precisely so an excluded row can be compared
+  against its unmodified twin at the same cost.
   This waits on played games rather than plumbing. Watch whether rows
   sharing a cost really are comparable work. Nothing retunes the pool
   automatically, and nothing should — read the rates, then edit by hand.

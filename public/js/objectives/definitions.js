@@ -1,10 +1,11 @@
 // The objective catalog — which is now a *shape* rather than a list.
 //
-// Every objective the game can set is one sentence with three blanks:
+// Every objective the game can set is one sentence with four blanks:
 //
-//     Score {constraint} {count} {property} {in scope}
+//     Score {constraint} {count} {property} {in scope}{, none excluded}
 //
 //   property    which scored words count      (properties.js)
+//   exclude     which of those don't, or ''   (properties.js)
 //   scope       where they have to land       — global, or one corner
 //   constraint  which way the count is read   — at least N, or fewer than N
 //
@@ -35,7 +36,7 @@
 // fixed by its params; how *hard* a given combination is comes out of the
 // cost model in generator.js, and a difficulty tier is a budget of costs.
 
-import { propertyMatches, propertyNoun } from './properties.js';
+import { propertyMatches, propertyModifier, propertyNoun } from './properties.js';
 
 // The scope axis. `global` counts words anywhere on the board; a corner
 // scope counts only words scored in that corner. Corner ids stay nw/ne/sw/se
@@ -103,6 +104,20 @@ function nounFor(params, count) {
 // spent on the limit's "fewer"/"no". In a list where every other line asks
 // the player to score *more*, the inverted sense is the one thing worth
 // making impossible to skim past.
+// The exclusion clause, or '' — "…, __none__ starting with a vowel".
+//
+// This is where the emphasis marker is spent now that a standalone limit is
+// no longer generated, and for the same reason it was spent on "fewer"/"no"
+// before: in a list where every clause asks the player to score *more*, the
+// one inverted word is the thing worth making impossible to skim past. A
+// singular reads "__not__ starting with a vowel", since "none" needs a plural
+// to be none of.
+function excludeClause(params, count) {
+  const modifier = params.exclude ? propertyModifier(params.exclude) : null;
+  if (!modifier) return '';
+  return count === 1 ? `, __not__ ${modifier}` : `, __none__ ${modifier}`;
+}
+
 function describe(params) {
   const { constraint, count } = params;
   if (constraint === Constraint.FEWER_THAN) {
@@ -111,8 +126,8 @@ function describe(params) {
       : `Score __fewer__ than ${count} ${nounFor(params, count)}`;
   }
   return count === 1
-    ? `Score a ${nounFor(params, 1)}`
-    : `Score ${count} or more ${nounFor(params, count)}`;
+    ? `Score a ${nounFor(params, 1)}${excludeClause(params, 1)}`
+    : `Score ${count} or more ${nounFor(params, count)}${excludeClause(params, count)}`;
 }
 
 // A word counts when it matches the property *and* landed in scope. Scope is
@@ -129,6 +144,11 @@ const composed = Object.freeze({
   label: 'Composed objective',
   defaults: Object.freeze({
     property: 'any',
+    // The id of a property whose words don't count, or '' for none. Empty
+    // string rather than null because resolved params are posted to the API,
+    // which takes flat primitives only — see canonicalParams in
+    // src/api/games.js, where a null fails the whole request.
+    exclude: '',
     scope: GLOBAL_SCOPE,
     constraint: Constraint.AT_LEAST,
     count: 5,

@@ -54,7 +54,12 @@ import {
   GLOBAL_SCOPE,
   scopeSubsumes,
 } from './definitions.js';
-import { listPropertyTunings, propertyRarity, propertySubsumes } from './properties.js';
+import {
+  listExclusions,
+  listPropertyTunings,
+  propertyRarity,
+  propertySubsumes,
+} from './properties.js';
 
 // Words a player scores in a whole game. The single number every global
 // objective is measured against.
@@ -111,6 +116,12 @@ const MAX_COST = 6;
 // Loop guard only — no real ladder gets near it.
 const MAX_COUNT = 500;
 
+// An exclusion below this count isn't a constraint, it's a reroll. "Score a
+// word that doesn't start with a vowel" asks the player to avoid a ~12% case
+// once, and a failed attempt costs them nothing — they simply score the next
+// word instead. An exclusion only means anything held across several words.
+const MIN_EXCLUSION_COUNT = 2;
+
 function volumeFor(scope, constraint) {
   if (scope === GLOBAL_SCOPE) return GLOBAL_VOLUME;
   return constraint === Constraint.FEWER_THAN ? LIMIT_CORNER_VOLUME : TARGET_CORNER_VOLUME;
@@ -145,7 +156,13 @@ export function costOf(params) {
 // most one row per family, which is what keeps deal sizes varied — see
 // findCombination in modes.js.
 export function familyKey(params) {
-  return [params.property, params.length ?? '-', params.scope, params.constraint].join('|');
+  return [
+    params.property,
+    params.length ?? '-',
+    params.exclude || '-',
+    params.scope,
+    params.constraint,
+  ].join('|');
 }
 
 // The ladder of counts for one family, as priced rows.
@@ -161,7 +178,9 @@ function ladder(base) {
   const byCost = new Map();
   const target = base.constraint === Constraint.AT_LEAST;
 
-  for (let count = 1; count <= MAX_COUNT; count++) {
+  const minCount = base.exclude ? MIN_EXCLUSION_COUNT : 1;
+
+  for (let count = minCount; count <= MAX_COUNT; count++) {
     const params = { ...base, count };
     const raw = rawCost(params);
 
@@ -189,18 +208,31 @@ function ladder(base) {
 // `{ type, params, cost }` — the same plain-data spec shape a hand-written
 // mode would use, so nothing downstream of here knows the pool was
 // generated.
+// Standalone limits are no longer generated: a `fewerThan` row was priced as
+// if the player wanted to score in the corner it named, and in most deals
+// nothing made them, so it took budget and asked nothing. Measured across
+// 2,000 deals a tier, 60-79% of deals carried a limit on a corner with no
+// target on it, and targets accounted for only 51% of an Easy budget.
+//
+// The restriction survives as an *exclusion* on a target instead — see the
+// EXCLUSIONS note in properties.js. It can't fail to bind, because it narrows
+// the very words the player has to produce.
+//
+// The FEWER_THAN machinery below and downstream (the constraint axis, the
+// `enduring` limit semantics in definitions.js, the countdown in the HUD) is
+// left intact and unreachable from the pool rather than deleted, so this
+// remains one line to reverse while the change is being played.
+const GENERATED_CONSTRAINTS = CONSTRAINTS.filter((c) => c !== Constraint.FEWER_THAN);
+
 export function buildObjectivePool() {
   const rows = [];
   listPropertyTunings().forEach((property) => {
-    CONSTRAINTS.forEach((constraint) => {
-      // Limits are corner-only. "Score fewer than N words" with no corner
-      // named would constrain the entire board rather than ask something of
-      // a place on it, and it contradicts most targets outright.
-      const scopes =
-        constraint === Constraint.FEWER_THAN ? CORNERS : [GLOBAL_SCOPE, ...CORNERS];
-      scopes.forEach((scope) => {
-        ladder({ ...property, scope, constraint }).forEach(({ cost, ...params }) => {
-          rows.push({ type: COMPOSED_TYPE, params, cost });
+    listExclusions(property).forEach((exclude) => {
+      GENERATED_CONSTRAINTS.forEach((constraint) => {
+        [GLOBAL_SCOPE, ...CORNERS].forEach((scope) => {
+          ladder({ ...property, exclude, scope, constraint }).forEach(({ cost, ...params }) => {
+            rows.push({ type: COMPOSED_TYPE, params, cost });
+          });
         });
       });
     });
@@ -280,14 +312,33 @@ function sameDemandDifferentCorner(a, b) {
   return (
     a.property === b.property &&
     a.length === b.length &&
+    a.exclude === b.exclude &&
     a.constraint === b.constraint &&
     a.count === b.count
   );
 }
 
+// At most one objective in a deal may carry an exclusion.
+//
+// Not a possibility problem either — several are perfectly winnable. It is
+// the same reading problem `sameDemandDifferentCorner` guards against, one
+// step out: an exclusion costs so little (avoiding a vowel start is a ~12%
+// tax) that nearly every family has an excluded twin at the same price, and
+// without this the selector cheerfully deals four of them. Measured before
+// this rule, a Hard panel routinely carried "…, none starting with a vowel"
+// on three separate lines, which is a wall of near-identical text rather than
+// three distinguishable goals.
+//
+// One per deal makes the exclusion read as what it is: the twist on this
+// particular hand.
+function bothExcluded(a, b) {
+  return Boolean(a.exclude) && Boolean(b.exclude);
+}
+
 // Whether two pool rows can appear in the same deal. Order-independent.
 export function rowsIncompatible(a, b) {
   return (
+    bothExcluded(a.params, b.params) ||
     sameDemandDifferentCorner(a.params, b.params) ||
     incompatibleOrdered(a.params, b.params) ||
     incompatibleOrdered(b.params, a.params)

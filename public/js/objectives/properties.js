@@ -11,8 +11,7 @@
 //            times as demanding. See RARITY NOTES below.
 //   subsumes which other properties this one implies, so the possibility
 //            check can tell that "6+ letter words" are a subset of "words"
-//            and therefore that a target on the first can contradict a
-//            limit on the second.
+//            and therefore that one target can make another free.
 //
 // A property is:
 //   id        stable key, stored in params and in the recorded row
@@ -21,9 +20,30 @@
 //   matches   (event, params) -> boolean. Pure, and reads only the event.
 //   noun      (params) -> singular noun phrase: "3-letter word", "word
 //             starting with a vowel". The describer pluralizes the head noun.
-//   rarity    (params) -> 0..1
+//   rarity    (params) -> 0..1, as a player *chasing* it experiences it
+//   avoided   (params) -> 0..1, as a player *avoiding* it does. Present only
+//             on a steerable property; absent means the two are equal.
+//   modifier  present only on properties usable as an exclusion: the phrase
+//             that follows "none" — "starting with a vowel". A property
+//             without one can be asked for but not excluded.
 //
 // Nothing here knows about scopes, constraints, counts or costs.
+//
+// ---------------------------------------------------------------------
+// EXCLUSIONS
+//
+// A property may carry an `exclude`: a second property id whose words are
+// then *not* counted. "Score 3 words, none starting with a vowel" is the
+// `any` property excluding `startsWithVowel` — one objective, not two.
+//
+// This is what replaced the standalone limit (`Constraint.FEWER_THAN` at a
+// corner scope). A limit priced in isolation assumed the player wanted to
+// score in that corner; nothing in a deal made them, so it cost budget and
+// asked nothing — measured at 70% of Easy deals carrying one on a corner
+// with no target on it, and Easy spending about half its budget that way. An
+// exclusion cannot fail to bind, because the restriction is inside the thing
+// the player is required to do.
+// ---------------------------------------------------------------------
 
 import { GameEvent } from './events.js';
 
@@ -57,6 +77,13 @@ import { GameEvent } from './events.js';
 // opens and when to stop a word. STEERING is that boost, applied to the two
 // properties a player can deliberately chase. It is a guess; the per-tuning
 // success rates from `npm run db:objectives` are what should correct it.
+//
+// STEERING cuts BOTH ways, which is why `rarity` and `avoidedRarity` are two
+// functions rather than one. A player chasing vowel-initial words scores more
+// of them than the dictionary rate; a player *avoiding* them scores fewer, by
+// the same faculty. Using the chased rate on both sides would price an
+// exclusion as harder than it is — the one number in the model that a single
+// sign error would invert.
 // ---------------------------------------------------------------------
 
 const LENGTH_SHARE = Object.freeze({ 3: 0.55, 4: 0.27, 5: 0.11, 6: 0.05, 7: 0.015, 8: 0.005 });
@@ -125,16 +152,28 @@ const PROPERTIES = [
     arg: null,
     matches: (event) => scored(event) && VOWELS.has(firstLetter(event.word)),
     noun: () => 'word starting with a vowel',
+    modifier: 'starting with a vowel',
     rarity: () => DICTIONARY_VOWEL_START * STEERING,
+    avoided: () => DICTIONARY_VOWEL_START / STEERING,
   },
   {
     id: 'endsWithVowel',
     arg: null,
     matches: (event) => scored(event) && VOWELS.has(lastLetter(event.word)),
     noun: () => 'word ending in a vowel',
+    modifier: 'ending in a vowel',
     rarity: () => DICTIONARY_VOWEL_END * STEERING,
+    avoided: () => DICTIONARY_VOWEL_END / STEERING,
   },
 ];
+
+// Only a property with a `modifier` phrase can be excluded, and the length
+// properties deliberately have none. Every length exclusion is a duplicate of
+// a length property already in the list — "score words, none of 3 letters" is
+// `lengthAtLeast 4` written the long way — so generating them would double the
+// pool with synonyms the possibility check would then have to keep pulling
+// back apart.
+const EXCLUDABLE = PROPERTIES.filter((property) => property.modifier);
 
 const BY_ID = Object.freeze(
   PROPERTIES.reduce((map, property) => {
@@ -166,16 +205,61 @@ export function listPropertyTunings() {
   );
 }
 
+// Every legal exclusion for one base tuning, as the params fragment it adds —
+// including the empty one, so a caller enumerating tunings × exclusions gets
+// the unmodified objective out of the same loop.
+//
+// `exclude` is '' rather than null when absent because a resolved params
+// object is posted to the API, which accepts only flat primitives (see
+// canonicalParams in src/api/games.js): a null would fail the whole request.
+//
+// A property can't exclude itself, or anything it already implies — both
+// leave a predicate no word can match. With EXCLUDABLE holding only the two
+// vowel properties the second case can't arise today, but the check is the
+// cheap half of not having to remember that.
+export function listExclusions(base) {
+  const legal = EXCLUDABLE.filter(
+    (property) => property.id !== base.property && !propertySubsumes(base, { property: property.id })
+  );
+  return ['', ...legal.map((property) => property.id)];
+}
+
+export function propertyModifier(id) {
+  return getProperty(id).modifier ?? null;
+}
+
 export function propertyMatches(params, event) {
-  return getProperty(params.property).matches(event, params);
+  if (!getProperty(params.property).matches(event, params)) return false;
+  if (params.exclude && getProperty(params.exclude).matches(event, params)) return false;
+  return true;
 }
 
 export function propertyNoun(params) {
   return getProperty(params.property).noun(params);
 }
 
+// The rate at which a player *avoiding* a property still hits it. See the
+// STEERING note above: the same skill that lifts a chased rate lowers an
+// avoided one, so a steerable property declares both and they sit either side
+// of its dictionary rate. A property with no `avoided` isn't steerable, and
+// its rate is the same whichever way the player is facing.
+function avoidedRarity(id) {
+  const property = getProperty(id);
+  return (property.avoided ?? property.rarity)({});
+}
+
+// The share of scored words matching the whole predicate, exclusion included.
+//
+// The two factors are multiplied, which assumes the base property and the
+// excluded one are independent. They are not, quite — longer words end in a
+// vowel slightly less often, and a word starting with a vowel is a little more
+// likely to end with one — but every input here is already an estimate, and a
+// correlation table would be a second thing to tune with no evidence behind
+// it. Independence is the honest default; `npm run db:objectives` will say
+// whether a particular pairing sits wrong.
 export function propertyRarity(params) {
-  return getProperty(params.property).rarity(params);
+  const base = getProperty(params.property).rarity(params);
+  return params.exclude ? base * (1 - avoidedRarity(params.exclude)) : base;
 }
 
 // ---------------------------------------------------------------------
@@ -198,6 +282,13 @@ export function propertyRarity(params) {
 // reasoning it doesn't have.
 // ---------------------------------------------------------------------
 export function propertySubsumes(a, b) {
+  // Exclusions narrow, so they can only help `a ⊆ b` — but only when `b`'s
+  // own exclusion is one `a` also makes. Anything else is refused rather than
+  // reasoned about: "words that aren't vowel-initial" ⊆ "words that don't end
+  // in a vowel" is false, and deciding the general case means intersecting
+  // predicates rather than comparing ids. Conservative here costs a redundant
+  // pair slipping into a deal; wrong here costs a deal that can't be won.
+  if (b.exclude && b.exclude !== a.exclude) return false;
   if (a.property === b.property) {
     const arg = getProperty(a.property).arg;
     if (!arg) return true;
