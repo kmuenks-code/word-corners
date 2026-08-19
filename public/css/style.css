@@ -1076,6 +1076,13 @@ body.game-over #objective-flag {
   line-height: 1;
 }
 
+/* Same red countdown as the panel's, but only while the objective is live:
+   a resolved flag repaints its whole background (teal or rose below) and
+   the badge has to stay legible against it. */
+.corner-flag:not(.complete):not(.failed) .corner-flag-badge.limit {
+  color: #C4584F;
+}
+
 .corner-flag:active {
   transform: translateY(2px);
   box-shadow:
@@ -1380,6 +1387,24 @@ body.game-over #corner-flags {
   font-weight: 800;
   color: var(--accent);
   white-space: nowrap;
+}
+
+/* Kept small and light so "2 left" costs the column barely more width than
+   "2/5" does — at full size it pushes the description into a second line on
+   a 320px screen. */
+.objective-progress-unit {
+  font-size: 0.6rem;
+  font-weight: 700;
+  margin-left: 2px;
+  opacity: 0.8;
+}
+
+/* A limit's counter counts down and wears the board's failure red, so it
+   reads as a dwindling allowance rather than progress toward a target.
+   Declared ahead of the resolved-status rules (same specificity) so a
+   finished objective's ✓-green or ✗-red wins once the game is over. */
+.objective-row.enduring .objective-progress {
+  color: #C4584F;
 }
 
 .objective-row.complete .objective-progress {

@@ -229,15 +229,50 @@ export function pulseObjectiveFlag(flagEl) {
 // panel and the game-over summary, which is why it takes the list element:
 // the two differ only in where they sit.
 //
-// `current` arrives raw from the runtime (a 214-point game against a
-// 150-point goal reports 214), so the meter clamps it while the numbers
-// print it as-is. An `enduring` objective's goal is a limit rather than a
-// target, so it gets no meter — a bar filling up would read as progress
-// when it actually means trouble.
+// An `enduring` objective's goal is a limit rather than a target, so it
+// gets no meter — a bar filling up would read as progress when it actually
+// means trouble — and its counter counts down instead (see progressText).
 // A description may wrap one word in `__..__` to call it out — e.g.
 // "Score __only__ 1 6-letter word" — which renders as an underline. Plain
 // text otherwise; there's no general markdown support here, just this one
 // emphasis marker.
+// An `enduring` objective is a ceiling, not a target, so its counter counts
+// *down*: how many more words it can still take before it fails. `goal` is
+// the limit and failing is `current >= goal`, so the allowance is one less
+// than the limit — "fewer than 3" leaves room for 2. It prints as a bare
+// number rather than `n/goal` — the denominator is exactly what made a
+// limit read as something to build toward — captioned "left" where there's
+// room for the word. Shown in red wherever it appears (see
+// `.objective-row.enduring` and `.corner-flag-badge.limit` in the CSS).
+// Zero means "no more words here", not failure — the failure is the word
+// after it, and by then the objective is FAILED and styled as such.
+function limitRemaining(objective) {
+  return Math.max(0, objective.goal - 1 - objective.current);
+}
+
+// The counter both homes print: descending for a limit, clamped for a
+// target (`current` arrives raw, so a 214-point game against a 150-point
+// goal would otherwise print 214/150).
+function progressText(objective) {
+  const { current, goal, enduring } = objective;
+  return enduring ? `${limitRemaining(objective)}` : `${Math.min(current, goal)}/${goal}`;
+}
+
+// The panel's counter, which is the same number plus a caption: a lone "2"
+// beside "Score fewer than 3 words" takes a beat to parse where "2 left"
+// doesn't. The caption is its own element so the CSS can set it small —
+// full size, it widens the column enough to wrap the description onto two
+// lines on a 320px screen. The corner flag gets no caption at all; that
+// badge is ~30px wide and no type size makes the word fit.
+function renderProgress(el, objective) {
+  el.textContent = progressText(objective);
+  if (!objective.enduring) return;
+  const unit = document.createElement('span');
+  unit.className = 'objective-progress-unit';
+  unit.textContent = 'left';
+  el.appendChild(unit);
+}
+
 function renderObjectiveDescription(el, text) {
   const match = text.match(/^(.*)__(.+?)__(.*)$/);
   if (!match) {
@@ -258,7 +293,7 @@ export function renderObjectiveList(listEl, objectives) {
     const { status, description, current, goal, enduring } = objective;
     const corner = objective.params?.corner ?? null;
     const item = document.createElement('li');
-    item.className = `objective-row ${status}`;
+    item.className = `objective-row ${status}${enduring ? ' enduring' : ''}`;
 
     const mark = document.createElement('span');
     mark.className = 'objective-status';
@@ -297,7 +332,7 @@ export function renderObjectiveList(listEl, objectives) {
 
     const progress = document.createElement('span');
     progress.className = 'objective-progress';
-    progress.textContent = enduring ? `${current}/${goal}` : `${Math.min(current, goal)}/${goal}`;
+    renderProgress(progress, objective);
 
     item.append(mark, symbol, body, progress);
     listEl.appendChild(item);
@@ -339,20 +374,21 @@ export function buildCornerFlags(containerEl, corners) {
 
 // One flag's whole state, from the objective bound to that corner — or
 // `null`, which hides it (an Endless game, or a corner this deal made no
-// demands of). The counter follows the objective list's convention: raw for
-// an `enduring` limit, clamped for a target.
+// demands of). The counter follows the objective list's convention
+// (progressText): a red countdown for an `enduring` limit, `n/goal` for a
+// target.
 export function renderCornerObjectiveFlag(flagEl, objective) {
   flagEl.hidden = !objective;
   if (!objective) return;
 
-  const { status, current, goal, enduring } = objective;
+  const { status, enduring } = objective;
   flagEl.classList.toggle('complete', status === 'complete');
   flagEl.classList.toggle('failed', status === 'failed');
   flagEl.querySelector('.corner-flag-mark').textContent =
     status === 'complete' ? '✓' : status === 'failed' ? '✗' : '';
-  flagEl.querySelector('.corner-flag-badge').textContent = enduring
-    ? `${current}/${goal}`
-    : `${Math.min(current, goal)}/${goal}`;
+  const badge = flagEl.querySelector('.corner-flag-badge');
+  badge.classList.toggle('limit', enduring);
+  badge.textContent = progressText(objective);
 }
 
 // Same "something actually moved" bump as the right-edge flag's.

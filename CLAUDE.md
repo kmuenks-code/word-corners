@@ -529,9 +529,26 @@ just given one is pure duplication; `endGame` likewise doesn't re-render,
 since `finish()` notifies before returning.
 
 `current` is reported raw in the snapshot. The renderer clamps it — both
-the meter *and* the printed number — for normal objectives, and prints raw
-only for `enduring` ones, which also get **no meter at all**: for a limit,
-a bar filling up would read as progress when it means trouble.
+the meter *and* the printed number — for normal objectives, which print as
+`n/goal`.
+
+An `enduring` objective is displayed as **a red countdown instead**, and
+gets **no meter at all**. Both halves of that are the same point: a limit
+isn't something to build toward, and a rising `0/3` beside a filling bar
+says the opposite. So it prints a bare `goal - 1 - current` — words still
+spendable there, since failing is `current >= goal` and "fewer than 3"
+leaves room for 2 — floored at 0, with no denominator, because the
+denominator was the part that read as a target. Red throughout, until the
+objective resolves and the ✓-green / ✗-red take over.
+
+Both homes share `progressText` in `ui.js`, which is what keeps the flag
+and the panel saying the same thing. They differ in one word: the panel
+prints "2 left", since a lone number carries no scale, and the corner flag
+prints "2", since ~30px of badge on a 320px screen has no room for the
+caption. That caption is its own element (`.objective-progress-unit`) and
+is deliberately **smaller than the number** — at the number's size it
+widens the column past the ~1px of slack a 320px panel row has, and the
+description wraps to two lines.
 
 A time limit (`limits.seconds`) would additionally need a UI ticker calling
 `objectives.tick()`; otherwise the limit is only noticed when the next
@@ -565,7 +582,9 @@ corner is being made.
   board. It re-renders from every snapshot while open, so progress shows
   without closing it.
 - A resolved objective's flag **stays**, going teal ✓ or rose ✗ while still
-  printing its counter: "1/3" beside a ✗ says how far it got.
+  printing its counter: "1/3" beside a ✗ says how far it got. (A resolved
+  *limit* keeps its countdown, so it says only "0 left" — how far it got is
+  the one thing that reading loses.)
 
 ### Recording objective results
 Every finished game stores one `game_objectives` row per objective dealt,
