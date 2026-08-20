@@ -72,6 +72,10 @@ export function submitGame({ score, stats, result }) {
       words5: stats.words5,
       words6Plus: stats.words6Plus,
       blanksEarned: stats.blanksEarned,
+      // Letters placed, not words scored. Recorded ahead of any use: a move
+      // budget is a designed-but-unset limit (see limits.moves in modes.js),
+      // and picking numbers for it needs the distribution first.
+      movesTotal: stats.movesTotal,
       objectives: result.objectives.map((objective) => ({
         type: objective.type,
         params: objective.params,

@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS games (
   words_6_plus   INTEGER NOT NULL,
   -- Blank/wildcard tiles awarded over the course of the game.
   blanks_earned  INTEGER NOT NULL,
+  -- Letters placed on corners that stayed there — an undone drop is not
+  -- counted. Nothing in the game bounds this yet: `limits.moves` in
+  -- public/js/objectives/modes.js is wired and deliberately unset, and this
+  -- column exists to measure what a real game costs before any tier tries to
+  -- impose a move budget. 0 means "not reported" — a game that reached game
+  -- over placed letters — which is how rows from clients older than the
+  -- column read.
+  moves_total    INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 

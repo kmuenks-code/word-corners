@@ -14,6 +14,9 @@ import { readBests, json } from './shared.js';
 const MAX_SCORE = 100000;
 const MAX_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
 const MAX_WORDS = 5000;
+// Letters placed. Several per word, and a long game is long — the measured
+// outlier banked 89 words — so this sits well above MAX_WORDS.
+const MAX_MOVES = 50000;
 // A deal takes at most one objective per type, so this is far above what the
 // catalog can currently produce — it only bounds the batch size.
 const MAX_OBJECTIVES = 20;
@@ -151,8 +154,22 @@ export async function handleGamesPost(request, env) {
   const words5 = intField(body.words5, MAX_WORDS);
   const words6Plus = intField(body.words6Plus, MAX_WORDS);
   const blanksEarned = intField(body.blanksEarned, MAX_WORDS);
+  // Absent from a client cached from before this field existed. Stored as 0,
+  // which is unambiguous: a game that reached game over placed letters, so a
+  // zero here reads as "not reported" rather than as a real count.
+  const movesTotal = body.movesTotal == null ? 0 : intField(body.movesTotal, MAX_MOVES);
 
-  const fields = [score, durationMs, wordsTotal, words3, words4, words5, words6Plus, blanksEarned];
+  const fields = [
+    score,
+    durationMs,
+    wordsTotal,
+    words3,
+    words4,
+    words5,
+    words6Plus,
+    blanksEarned,
+    movesTotal,
+  ];
   if (fields.some((f) => f === null)) {
     return json({ error: 'Malformed game summary' }, 400);
   }
@@ -187,8 +204,8 @@ export async function handleGamesPost(request, env) {
     `INSERT INTO games
        (player_id, game_version, mode_id, difficulty, outcome, outcome_reason,
         objectives_total, objectives_complete, score, duration_ms, words_total,
-        words_3, words_4, words_5, words_6_plus, blanks_earned)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        words_3, words_4, words_5, words_6_plus, blanks_earned, moves_total)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`
   )
     .bind(
@@ -207,7 +224,8 @@ export async function handleGamesPost(request, env) {
       words4,
       words5,
       words6Plus,
-      blanksEarned
+      blanksEarned,
+      movesTotal
     )
     .first();
 

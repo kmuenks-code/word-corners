@@ -33,6 +33,16 @@ export function createGameState() {
       words5: 0,
       words6Plus: 0,
       blanksEarned: 0,
+      // Letters placed that stuck — an undone drop doesn't count, so this
+      // measures the board a game actually consumed rather than every
+      // gesture made at it.
+      //
+      // Nothing bounds it today. `limits.moves` in the objective runtime is
+      // wired end to end (runtime.js counts it, standardEvaluate checks it)
+      // and deliberately left unset: a move budget is the second pressure
+      // axis, and it wants real distributions behind its numbers before a
+      // tier tries to impose one. This is how those get collected.
+      movesTotal: 0,
     },
   };
 }
@@ -55,6 +65,19 @@ export function recordWordSubmitted(state, wordLength) {
 
 export function recordBlankEarned(state) {
   state.stats.blanksEarned += 1;
+}
+
+// One letter placed on a corner, blank-derived or not. Paired with
+// unrecordLetterPlaced rather than left to accumulate, so the count means
+// "letters on the board" and not "drops attempted" — the objective runtime's
+// own move counter behaves the same way, since undo replays it from a
+// baseline.
+export function recordLetterPlaced(state) {
+  state.stats.movesTotal += 1;
+}
+
+export function unrecordLetterPlaced(state) {
+  state.stats.movesTotal -= 1;
 }
 
 export function setChoiceLetter(state, index, letter) {

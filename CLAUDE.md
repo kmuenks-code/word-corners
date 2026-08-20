@@ -85,6 +85,7 @@ watches `master`. Changing one does not change the other.
 | `npm run db:init*` | Apply `db/schema.sql`. |
 | `npm run db:migrate*` | Apply `db/migrations/` to an existing database. |
 | `npm run db:games*`, `db:objectives*` | Recent games / the per-objective success-rate rollup. |
+| `npm run db:moves*` | Letters placed per game, by version/mode/tier. Reading for a future move budget. |
 
 The `*` scripts default to staging; `:production` variants exist for each.
 
@@ -310,7 +311,7 @@ Score {constraint} {count} {property} {in scope}{, none excluded}
 | property | `properties.js` | any word; exactly N letters; N+ letters; starts with a vowel; ends in a vowel |
 | exclude | `properties.js` | nothing, or a property whose words then don't count |
 | scope | `definitions.js` | global, or one of the four corners |
-| constraint | `definitions.js` | at least N (**fewer than N is no longer generated** — see "Why limits became exclusions") |
+| constraint | `definitions.js` | at least N (**fewer than N is never *generated*** — it reaches a deal only as a rider, see "Tension riders") |
 
 `generator.js` enumerates every combination, prices each, and drops the ones
 its cost model puts out of range. Adding a property therefore adds its whole
@@ -339,11 +340,12 @@ tracker doesn't have, and any deal containing one could only ever be won by
 playing the board all the way closed, never early. At-least and fewer-than
 cover the ground between them.
 
-### Why limits became exclusions
+### Why limits became exclusions, and then came back as riders
 The standalone limit — `fewerThan` at a corner scope, "score fewer than 3
 words here" — **is no longer generated.** It was the system's one free lunch,
 and the reason is worth keeping because it is a general trap in any priced
-catalog.
+catalog. (It returns in a different shape — see "Tension riders" — but never
+as a pool row, and the reasoning below is why.)
 
 A limit's cost came out of `ABANDON_CORNER_COST × forgone`, which prices the
 words the player *gives up* by respecting it. That is only a real price if
@@ -391,22 +393,121 @@ live for as long as its target runs — and once the target completes the game
 is won and the limit is moot. It converges on the exclusion with more
 machinery.
 
-**The `fewerThan` machinery is still in the tree, unreachable from the pool**
-— one line in `generator.js` (`GENERATED_CONSTRAINTS`) reverses that. The
+**The `fewerThan` machinery is still in the tree and is no longer dead** — the
 constraint axis, `enduring`, `failed()`, the HUD countdown and the possibility
-check's limit branches are all intact and dead. Left rather than deleted while
-the change is being played; delete them together, or not at all, once it is
-settled. Note what deleting costs: blowing a limit was the only instant loss
-in the game, and an exclusion has no such teeth — an excluded word simply
-doesn't count.
+check's limit branches are all reachable again through riders. What
+`GENERATED_CONSTRAINTS` still governs is only whether a limit can be dealt
+*standing on its own*, which it can't and shouldn't. Not deleting it turned
+out to be worth roughly the whole of the next section.
+
+### Tension riders
+A limit dealt **onto** a corner target instead of beside it. The player's
+version of the problem: every generated objective is a monotone counter, so
+nothing a player does is ever *wrong* and the winning strategy at any tier is
+to keep playing. Budget says how hard each goal is, demand says how much game
+they add up to, and neither can make a move cost anything.
+
+A rider caps the corner one target sits on, so reaching that target means
+choosing what to bank there:
+
+```
+◆ Score 3 or more words starting with a vowel
+◆ Score fewer than 5 words
+```
+
+Three of your at-most-four words in that corner have to start with a vowel.
+Every letter dropped there is now a commitment, which is the decision the mode
+was missing.
+
+**What makes this legitimate where the standalone limit wasn't.** The 0.12.0
+failure was not that limits are a bad mechanic; it was that `cost` is priced
+per row while a limit's difficulty is a property of the deal. So a rider is
+not a row: it is not enumerated, not priced, never in `OBJECTIVE_POOL`. It is
+attached after selection, to a target already dealt on that corner, and it is
+described by a deal-level number instead of a cost —
+
+```
+slack = allowance - the target's count
+```
+
+— the words you may bank in that corner that *don't* count. That quantity is
+knowable at selection time, which is exactly what a per-row cost could never
+be. This is the "gated to a corner that also carries a target" option that was
+considered and set aside earlier in this file; the objection recorded there
+(the limit is moot once its target completes) undersells it, because the
+tension lives in the whole route *to* completing the target, not after it.
+
+Six decisions, each of which is load-bearing:
+
+- **A rider spends no budget.** `POINT_BUDGETS` and `MIN_DEMAND` both measure
+  *work*; a rider adds risk, not work. Charging budget for it would have it
+  displace the very target that makes it bind. Its recorded `cost` is `0` —
+  not `null`, which already means "a mode that listed this objective outright"
+  — so riders are one filter away in the `db:costs` rollup.
+- **Slack is proportional** (`ceil(count × rate)`), not a flat number of
+  wasted words. The difficulty of a cap is the *share* of your words there
+  that must count. A flat slack of 2 is generous on a 2-word target and
+  near-unplayable on a 10-word one — and the higher tiers deal the higher
+  counts, so a flat number would compound in the one place it must not.
+  `ceil` also guarantees at least one mulligan at every tier: a zero-slack cap
+  ends a run on one unlucky draw with no recourse, since a corner can't be
+  un-played.
+- **Only a corner carrying exactly one objective.** Two targets on one corner
+  may or may not be jointly satisfiable inside a single allowance — one word is
+  not both 3 letters and 5 — and deciding that is the requirements algebra the
+  possibility check deliberately doesn't have. With one target the rider is
+  winnable by construction, since its allowance is that target's count plus
+  slack.
+- **Never on an unconditional target.** Against `any` with no exclusion every
+  banked word counts, so progress and allowance advance in lockstep and the cap
+  can only be breached *after* the target is met — no decision, just a trap for
+  playing on in a finished corner. `propertyRarity(params) < 1` is exactly that
+  test, and it is the clause to preserve if `canCarryRider` is ever touched.
+- **Attached after the search, never inside it.** The budget is still spent
+  exactly, the demand floor is still met, and `null` still proves a tier
+  infeasible — a rider changes none of those because it costs and demands
+  nothing. `dealDemand` skips `fewerThan` rows for the same reason: a rider's
+  count is an allowance *above* its target's, and folding it in would overstate
+  a deal in the one direction that function promises never to err.
+- **A tier wanting riders re-deals rather than searching for them.** Some
+  perfectly good deals have nowhere to put one (all-global, or every corner row
+  sharing its corner, or the only corner target unconditional). Eligibility is a
+  *preference*, not a requirement — a Hard deal without a rider is still a legal
+  Hard deal — so it is a bounded re-roll with the last set as fallback, not a
+  fourth constraint in `findCombination`. ~85% of Hard deals qualify first try;
+  eight attempts takes it to 100% in 2,000-deal runs.
+
+The tier tables are `RIDERS_PER_DEAL` (how many, as `[min, max]`) and
+`SLACK_RATE`, both in `modes.js` beside the other two. Measured over 2,000
+deals a tier:
+
+| | deals with a rider | riders per deal | mean slack |
+|---|---|---|---|
+| easy | 0% | 0 | — |
+| medium | 40% | 0.40 | 3.3 |
+| hard | 100% | 1.00 | 2.3 |
+| expert | 100% | 1.25 | 1.7 |
+
+Easy has none on purpose: it is the tier where the board itself is still the
+opponent. **`SLACK_RATE.expert` is the first number to move if this lands
+wrong** — at 0.25 an Expert rider can produce "3 or more 5-letter words, at
+most 4 words here", which is three lucky-and-deliberate words out of four
+attempts. That is the intended shape of Expert and it has never been played.
+
+The description marker (`__like this__`) has a consumer again: the limit's
+"fewer"/"no". That is the case it was built for, and the reasoning that
+removed it from the exclusion clause is what justifies it here — a rider
+*really does* end the run when breached, so the inverted sense is worth making
+impossible to skim past. Copy implying a penalty is only wrong when the game
+won't apply one.
 
 ### The constraint axis decides the tracker semantics
 `atLeast` is a target: it completes on reaching its count, which is what lets
 a deal be won with corners still open. `fewerThan` is a limit: it fails on
 reaching its count and can never complete early, because surviving to game end
 *is* the condition. That is why `enduring` is a function of params rather than
-a per-type flag. With limits no longer generated every live objective is a
-target, so the `enduring` path never fires in a real game.
+a per-type flag. Every objective drawn from the pool is a target; the only
+`fewerThan` in a live game is a rider.
 
 ### Corner symbols
 Corners are identified to the player by **shape**, not direction: NW
@@ -540,6 +641,7 @@ Each is edited independently of the others:
 | a difficulty tier | one entry in `difficulty.js` + one number each in `POINT_BUDGETS` and `MIN_DEMAND` | validator rejects a budget the pool can't spend, or can't spend against the floor |
 | how *hard* a tier's goals are | one number in `POINT_BUDGETS` | nothing else changes |
 | how *long* a tier plays | one number in `MIN_DEMAND` | nothing else changes |
+| how much *pressure* a tier applies | one entry each in `RIDERS_PER_DEAL` and `SLACK_RATE` | nothing else changes |
 
 A mode names *which* pool is available; the tier supplies only *how much*
 may be spent. That separation is why "swap in objectives by mode and
@@ -547,7 +649,9 @@ difficulty" is `createMode(id, difficulty)` and nothing more.
 
 ### The Objective mode
 Deals a random set costing **exactly** the tier's budget *and* demanding at
-least the tier's word floor. Two tables, not one:
+least the tier's word floor, then attaches the tier's tension riders. Three
+tables, not one — cost buys difficulty, demand buys length, riders buy
+decisions (see "Tension riders"):
 
 | | budget (`POINT_BUDGETS`) | word floor (`MIN_DEMAND`) | mean demand | vs. a median 22-word game |
 |---|---|---|---|---|
@@ -660,14 +764,18 @@ are refused:
 1. **Contradiction.** A demands `m`, B forbids reaching `n`, and `m >= n`.
    Meeting A necessarily fails B. This is the unwinnable case, and the
    motivating example: "score 3 or more words starting with a vowel here"
-   beside "score fewer than 3 words here". *Unreachable now that limits
-   aren't generated — kept with the rest of the limit machinery.*
+   beside "score fewer than 3 words here". Live again now that riders exist —
+   though a rider can never trip it against its *own* target, whose count its
+   allowance is derived from. It is what keeps that derivation honest if it is
+   ever changed.
 2. **A free target.** Both demand, A's demand is stricter, clearing it
    clears B automatically. B took a slot and asked for nothing. **This is the
-   only one of the three that fires today**, and it is what the exclusion
-   handling in `propertySubsumes` exists for.
+   one that fires during selection**, and it is what the exclusion handling in
+   `propertySubsumes` exists for.
 3. **A free limit.** Both forbid, B's is tighter, keeping it keeps A. Same
-   waste, other direction. *Also unreachable.*
+   waste, other direction. Reachable only with two riders in one deal, which
+   Expert can draw — they sit on different corners, so containment fails and
+   it is `sameDemandDifferentCorner` that catches the awkward pair instead.
 
 An exclusion narrows a predicate, so it can only help `a ⊆ b` — but the
 lattice refuses the general case rather than reasoning about it: containment
@@ -730,7 +838,8 @@ Six, each ignorant of the one above it:
    modes, the priced pool and (later) server-delivered objectives all be
    the same thing.
 7. **`modes.js` — what's in play and what ends the game.** `POINT_BUDGETS`,
-   `MAX_DEAL_SIZE`, the selection search, and the module-load validator.
+   `MIN_DEMAND`, `RIDERS_PER_DEAL`/`SLACK_RATE`, `MAX_DEAL_SIZE`, the
+   selection search, and the module-load validator.
 
 `runtime.js` glues them together and is the only thing `main.js` holds;
 `index.js` is the facade it imports from.
@@ -788,9 +897,8 @@ than silently replaying wrong.
 ### How a game ends
 - Completing **every** objective ends the game as a win immediately,
   corners still open (`endOnComplete`, default true).
-- **"Every objective" means every *target*.** Moot while no limits are
-  generated — every live objective is a target — but the reasoning is what
-  the retained limit path depends on. Limits are not targets: they
+- **"Every objective" means every *target*.** This is what lets a deal
+  carrying a rider be won early at all. Limits are not targets: they
   never report complete mid-game, so counting them toward the win would mean
   a deal containing one could never be cleared early — the player would
   grind the board closed with the limit live throughout, where playing on can
@@ -818,9 +926,8 @@ the meter *and* the printed number — for normal objectives, which print as
 `n/goal`.
 
 An `enduring` objective is displayed as **a red countdown instead**, and
-gets **no meter at all**. *No pool row is enduring today, so this path is
-dead alongside the rest of the limit machinery — it is described as it would
-behave if limits came back.* Both halves of that are the same point: a limit
+gets **no meter at all** — the shape every rider takes. Both halves of that
+are the same point: a limit
 isn't something to build toward, and a rising `0/3` beside a filling bar
 says the opposite. So it prints a bare `goal - 1 - current` — words still
 spendable there, since failing is `current >= goal` and "fewer than 3"
@@ -905,6 +1012,11 @@ Three load-bearing decisions there:
   an objective.
 - **A lost game still records what was achieved**, so "lost, but 3 of 4" is
   distinguishable from "lost with nothing done" without a join.
+- **Riders are `cost = 0` and belong in neither rollup.** They aren't priced,
+  so a rate against cost 0 says nothing about the cost model — filter
+  `cost > 0` when reading `db:costs`. Read separately, though, they are the
+  measurement that matters for tension: a rider's completion rate is how often
+  a capped corner was kept, and a rider near 100% is slack that isn't biting.
 
 **Score is not ranked for Objective games.** `readBests` filters to
 `mode_id = 'endless'` and the game-over card shows no best lines there. An
@@ -932,9 +1044,15 @@ separates them.** Slice by it before reading any rate:
 - **0.14.0** — budgets 6/10/16/20 against MIN_DEMAND, but still priced at
   GLOBAL_VOLUME 12. Demand capped at 15, so these deals asked for roughly a
   third of what the board produces.
-- **0.15.0 onward** — repriced against measured Endless capacity: GLOBAL_VOLUME
+- **0.15.0** — repriced against measured Endless capacity: GLOBAL_VOLUME
   30, MAX_COST 10, measured LENGTH_SHARE, budgets 10/18/26/30. Not comparable
   with anything earlier; `params.exclude` reads `""` on an unmodified row.
+- **0.16.0 onward** — same pricing, plus tension riders at Medium and above.
+  A rider is a `fewerThan` row with `cost = 0` and can lose the game outright,
+  so an Objective game here can end short of its targets for a reason no
+  earlier version had. Filter `cost > 0` to compare target rates against
+  0.15.0. Also the first version with `moves_total`; earlier rows read 0,
+  meaning "not reported".
 
 ## Backend
 One Worker serves both `public/` and the API on the same origin — so no
@@ -1026,14 +1144,20 @@ and internal changes don't need one. Keep it in step with `version` in
 `package.json`.
 
 ## Not yet built (ask before assuming scope)
-- **Deciding whether exclusions replaced limits or should sit beside them.**
-  The switch (0.13.0, see "Why limits became exclusions") is measured on deal
-  *shape* — the free-lunch deals are gone and the word counts ramp — but not
-  yet on how it plays. The open question is whether losing the instant-loss
-  limit costs the mode its only moment of jeopardy. Reversing is one line;
-  reintroducing limits *gated to a corner that also carries a target* is the
-  middle option that was considered and set aside. Decide from played games,
-  and delete the dead limit machinery only once decided.
+- **Playing the riders.** Answered on paper (0.16.0, see "Tension riders");
+  never played. The numbers to watch, in order: `SLACK_RATE.expert` at 0.25,
+  which can produce a genuinely severe corner; whether one rider is enough at
+  Hard; and whether an instant loss from a blown cap reads as fair or as
+  arbitrary — it can only be triggered by a deliberate corner tap, never by a
+  mis-drag, which is the argument that it is fair. `RIDERS_PER_DEAL.easy` is
+  `[0, 0]` on purpose and should probably stay there.
+- **A move budget** — the second pressure axis, and the only one that can make
+  objectives on *different* corners compete. `limits.moves` is wired end to end
+  (`runtime.js` counts it, `standardEvaluate` checks it, undo refunds it) and
+  deliberately unset; `moves_total` is now recorded on every game so the
+  numbers can come from real distributions rather than reasoning. Read
+  `npm run db:moves` before picking any. Note it is undirected pressure: it
+  makes bad play lose faster, where a rider creates a specific decision.
 - **Playtesting the cost model.** `GLOBAL_VOLUME` and `LENGTH_SHARE` are now
   measured (three Endless games, n=3 — worth re-reading once there are more,
   since the median of 22 and the mean of 42 disagree sharply and one 89-word

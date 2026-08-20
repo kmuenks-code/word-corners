@@ -1,7 +1,7 @@
 {
   "name": "word-corners",
   "private": true,
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Mobile-friendly word game. The game itself has no build step and no runtime dependencies — wrangler is here only to run and deploy the Cloudflare Worker + D1 backend.",
   "scripts": {
     "dev": "wrangler dev --env staging",
@@ -11,13 +11,15 @@
     "db:init": "wrangler d1 execute word-corners-staging --env staging --local --file=db/schema.sql",
     "db:init:staging": "wrangler d1 execute word-corners-staging --env staging --remote --file=db/schema.sql",
     "db:init:production": "wrangler d1 execute word-corners --remote --file=db/schema.sql",
-    "db:migrate": "wrangler d1 execute word-corners-staging --env staging --local --file=db/migrations/001_objective_results.sql",
-    "db:migrate:staging": "wrangler d1 execute word-corners-staging --env staging --remote --file=db/migrations/001_objective_results.sql",
-    "db:migrate:production": "wrangler d1 execute word-corners --remote --file=db/migrations/001_objective_results.sql",
+    "db:migrate": "wrangler d1 execute word-corners-staging --env staging --local --file=db/migrations/002_game_moves.sql",
+    "db:migrate:staging": "wrangler d1 execute word-corners-staging --env staging --remote --file=db/migrations/002_game_moves.sql",
+    "db:migrate:production": "wrangler d1 execute word-corners --remote --file=db/migrations/002_game_moves.sql",
     "db:games": "wrangler d1 execute word-corners-staging --env staging --remote --command=\"SELECT * FROM games ORDER BY created_at DESC LIMIT 20\"",
     "db:games:production": "wrangler d1 execute word-corners --remote --command=\"SELECT * FROM games ORDER BY created_at DESC LIMIT 20\"",
     "db:objectives": "wrangler d1 execute word-corners-staging --env staging --remote --command=\"SELECT json_extract(params,'$.property') AS property, json_extract(params,'$.length') AS len, json_extract(params,'$.exclude') AS excl, json_extract(params,'$.scope') AS scope, json_extract(params,'$.constraint') AS rule, json_extract(params,'$.count') AS n, cost, COUNT(*) AS dealt, ROUND(AVG(completed) * 100, 1) AS pct FROM game_objectives GROUP BY params, cost ORDER BY cost, pct\"",
     "db:objectives:production": "wrangler d1 execute word-corners --remote --command=\"SELECT json_extract(params,'$.property') AS property, json_extract(params,'$.length') AS len, json_extract(params,'$.exclude') AS excl, json_extract(params,'$.scope') AS scope, json_extract(params,'$.constraint') AS rule, json_extract(params,'$.count') AS n, cost, COUNT(*) AS dealt, ROUND(AVG(completed) * 100, 1) AS pct FROM game_objectives GROUP BY params, cost ORDER BY cost, pct\"",
+    "db:moves": "wrangler d1 execute word-corners-staging --env staging --remote --command=\"SELECT game_version, mode_id, difficulty, COUNT(*) AS games, ROUND(AVG(moves_total)) AS avg_moves, MIN(moves_total) AS min_moves, MAX(moves_total) AS max_moves, ROUND(AVG(CAST(moves_total AS REAL) / NULLIF(words_total, 0)), 2) AS moves_per_word FROM games WHERE moves_total > 0 GROUP BY game_version, mode_id, difficulty ORDER BY game_version, mode_id, difficulty\"",
+    "db:moves:production": "wrangler d1 execute word-corners --remote --command=\"SELECT game_version, mode_id, difficulty, COUNT(*) AS games, ROUND(AVG(moves_total)) AS avg_moves, MIN(moves_total) AS min_moves, MAX(moves_total) AS max_moves, ROUND(AVG(CAST(moves_total AS REAL) / NULLIF(words_total, 0)), 2) AS moves_per_word FROM games WHERE moves_total > 0 GROUP BY game_version, mode_id, difficulty ORDER BY game_version, mode_id, difficulty\"",
     "db:costs": "wrangler d1 execute word-corners-staging --env staging --remote --command=\"SELECT cost, COUNT(*) AS dealt, ROUND(AVG(completed) * 100, 1) AS pct, COUNT(DISTINCT params) AS tunings FROM game_objectives GROUP BY cost ORDER BY cost\"",
     "db:costs:production": "wrangler d1 execute word-corners --remote --command=\"SELECT cost, COUNT(*) AS dealt, ROUND(AVG(completed) * 100, 1) AS pct, COUNT(DISTINCT params) AS tunings FROM game_objectives GROUP BY cost ORDER BY cost\""
   },

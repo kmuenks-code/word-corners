@@ -14,6 +14,8 @@ import {
   markGameStarted,
   recordWordSubmitted,
   recordBlankEarned,
+  recordLetterPlaced,
+  unrecordLetterPlaced,
   setGameOver,
 } from './gameState.js';
 import {
@@ -448,6 +450,7 @@ function handleDrop(index, targetName) {
   const prevNextLetter = state.nextLetter;
 
   appendLetterToCorner(state, targetName, prevChoiceLetter);
+  recordLetterPlaced(state);
   const word = state.corners[targetName];
   const cornerEl = cornerElFor(targetName);
   renderCorner(cornerEl, word, state.blankIndices[targetName]);
@@ -525,6 +528,7 @@ function handleBlankLetterChosen(letter) {
 
   const objectiveMark = objectives.mark();
   appendBlankLetterToCorner(state, targetName, letter);
+  recordLetterPlaced(state);
   const word = state.corners[targetName];
   const cornerEl = cornerElFor(targetName);
   renderCorner(cornerEl, word, state.blankIndices[targetName]);
@@ -555,6 +559,9 @@ function handleUndo() {
   // Both undo paths reverse exactly one move, so both rewind the objective
   // stream the same way — objectives never need their own undo branch.
   objectives.rewindTo(lastMove.objectiveMark);
+  // Both paths take a letter back off the board, so both refund the move —
+  // the same thing the rewind above does to the runtime's own counter.
+  unrecordLetterPlaced(state);
 
   if (lastMove.type === 'blank') {
     const { corner, closedNow } = lastMove;

@@ -6,4 +6,4 @@
 // previous version — new scoring formula, different letter distribution,
 // changed word-length thresholds, new mechanics. Cosmetic/CSS-only changes
 // don't need a bump.
-export const GAME_VERSION = '0.15.0';
+export const GAME_VERSION = '0.16.0';

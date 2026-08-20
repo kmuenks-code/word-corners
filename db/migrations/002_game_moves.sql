@@ -1,0 +1,21 @@
+-- 002 — record how many letters a game placed.
+--
+-- Apply with:
+--   npm run db:migrate              (local dev database)
+--   npm run db:migrate:staging
+--   npm run db:migrate:production
+--
+-- NOT idempotent, for the same reason 001 isn't: SQLite has no ALTER TABLE
+-- ... ADD COLUMN IF NOT EXISTS, so a second run fails with "duplicate column
+-- name". That failure is the signal that it already landed. db/schema.sql
+-- carries this column too, so a database created from the schema after this
+-- migration must not be migrated.
+--
+-- Migrations are ordered and the db:migrate scripts name one file, so a
+-- database that never had 001 applied needs 001 first.
+--
+-- Backfill note: pre-existing rows get 0, which reads as "not reported"
+-- rather than as a real count — a game that reached game over placed
+-- letters. Slice on it (or on game_version) before averaging.
+
+ALTER TABLE games ADD COLUMN moves_total INTEGER NOT NULL DEFAULT 0;

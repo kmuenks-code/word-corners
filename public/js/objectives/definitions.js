@@ -67,9 +67,10 @@ export function scopeSubsumes(a, b) {
 //
 // FEWER_THAN is a limit: it fails the moment the count reaches `count`, and
 // it can never complete early — surviving to game end *is* the condition, so
-// it is `enduring`. Limits are generated for corner scopes only (see
-// generator.js); a global "score fewer than N words" would fight the entire
-// board rather than ask anything of a place on it.
+// it is `enduring`. A limit is never dealt on its own: it reaches a deal only
+// as a rider attached to a corner target, which is what makes it bind (see
+// TENSION RIDERS in generator.js). A global "score fewer than N words" would
+// fight the entire board rather than ask anything of a place on it.
 //
 // There is no EXACTLY. It would have to stay live to game end like a limit
 // while also being a target, so any deal containing one could only ever be
@@ -117,9 +118,10 @@ function nounFor(params, count) {
 //     wording at all.
 //   - the underline was carrying the same false weight, so it goes with it.
 //
-// This leaves the emphasis marker with no consumer. Kept in ui.js rather than
-// removed — it costs one regex and is the obvious tool for the next clause
-// that genuinely inverts.
+// The marker's one consumer is therefore the limit's "fewer"/"no" above, which
+// is the case it was made for: a rider really does end the run when it is
+// breached, so the inverted sense is the one thing worth making impossible to
+// skim past in a list where every other line asks the player to score more.
 function excludeClause(params) {
   const modifier = params.exclude ? propertyModifier(params.exclude) : null;
   return modifier ? `, not ${modifier}` : '';

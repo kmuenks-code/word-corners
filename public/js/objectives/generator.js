@@ -244,8 +244,10 @@ function ladder(base) {
 //
 // The FEWER_THAN machinery below and downstream (the constraint axis, the
 // `enduring` limit semantics in definitions.js, the countdown in the HUD) is
-// left intact and unreachable from the pool rather than deleted, so this
-// remains one line to reverse while the change is being played.
+// intact and is no longer dead: limits come back as *riders* attached to a
+// corner target after selection, which is what fixes the pricing problem
+// above. See TENSION RIDERS below. This line still governs only whether a
+// limit can be dealt on its own, which it can't.
 const GENERATED_CONSTRAINTS = CONSTRAINTS.filter((c) => c !== Constraint.FEWER_THAN);
 
 export function buildObjectivePool() {
@@ -262,6 +264,77 @@ export function buildObjectivePool() {
     });
   });
   return Object.freeze(rows);
+}
+
+// ---------------------------------------------------------------------
+// TENSION RIDERS
+//
+// A limit that is dealt *onto* a corner target rather than on its own, and
+// the answer to the free-lunch problem that killed the standalone limit.
+//
+// The failure recorded above was not that limits are a bad mechanic. It was
+// that `cost` is priced per row while a limit's difficulty is a property of
+// the deal: a limit only asks something if something else makes the player
+// want to score in the corner it names, and nothing in a deal did. No number
+// written in this file can be right for a row like that.
+//
+// So a rider is not a row. It is not enumerated, not priced, and never enters
+// OBJECTIVE_POOL — it is attached after selection to a target already dealt on
+// that corner (see attachRiders in modes.js), and it is described by one
+// deal-level number instead of a cost:
+//
+//     slack = allowance - target count
+//
+// the words the player may bank in that corner *without* them counting. Slack
+// 0 would mean every word banked there has to match; slack 5 means the limit
+// is not really there. That number is knowable at selection time, which is
+// exactly what a per-row cost could never be.
+//
+// A rider spends no budget, deliberately. POINT_BUDGETS and MIN_DEMAND both
+// measure *work* — how hard each goal is, and how much game the deal adds up
+// to — and a rider adds neither. It adds risk. Charging budget for it would
+// have it displace the very target that makes it bind.
+// ---------------------------------------------------------------------
+
+// Whether a target can carry a rider at all.
+//
+// The load-bearing clause is the rarity one. A cap only creates a decision if
+// some of what the player could bank in that corner *doesn't* count toward the
+// target — those are the words the allowance is spent on. Against `any` with no
+// exclusion every banked word counts, so progress and the allowance advance in
+// lockstep and the limit can only be breached after the target is already met:
+// no decision, just a trap for playing on in a finished corner. `propertyRarity`
+// is precisely the test for that, exclusion included.
+export function canCarryRider(params) {
+  return (
+    params.scope !== GLOBAL_SCOPE &&
+    params.constraint === Constraint.AT_LEAST &&
+    propertyRarity(params) < 1
+  );
+}
+
+// The limit riding on `row`: same corner, any word, an allowance of the
+// target's count plus `slack` that don't count. Failing is `progress >= count`
+// (see definitions.js), so the words actually bankable there are `count - 1` —
+// hence the +1.
+//
+// `cost` is 0 rather than null. Null already means "a mode that listed this
+// objective outright instead of pricing it"; 0 says the thing that is true
+// here, which is that this row was dealt against no budget — and it makes
+// riders a one-column filter in the `npm run db:costs` rollup.
+export function buildRider(row, slack) {
+  const { scope, count } = row.params;
+  return {
+    type: COMPOSED_TYPE,
+    params: {
+      property: 'any',
+      exclude: '',
+      scope,
+      constraint: Constraint.FEWER_THAN,
+      count: count + slack + 1,
+    },
+    cost: 0,
+  };
 }
 
 // ---------------------------------------------------------------------

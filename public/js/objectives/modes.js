@@ -22,8 +22,14 @@
 //                     something else entirely.
 
 import { ObjectiveStatus } from './tracker.js';
-import { describeSpec, GLOBAL_SCOPE } from './definitions.js';
-import { buildObjectivePool, familyKey, rowsIncompatible } from './generator.js';
+import { Constraint, describeSpec, GLOBAL_SCOPE } from './definitions.js';
+import {
+  buildObjectivePool,
+  buildRider,
+  canCarryRider,
+  familyKey,
+  rowsIncompatible,
+} from './generator.js';
 import {
   DEFAULT_DIFFICULTY,
   DIFFICULTY_LABELS,
@@ -64,8 +70,8 @@ function standardEvaluate(mode, view) {
   //
   // `targets.length > 0` is what stops a hypothetical all-limits deal from
   // being won on move zero for doing nothing. Such a deal can't be dealt
-  // today (one row per type, and the one enduring type's rungs cost less
-  // than any budget), and if one ever can be, it plays to the normal
+  // today — a limit only reaches a deal as a rider on a target, so a limit
+  // implies a target — and if one ever can be, it plays to the normal
   // all-corners-closed ending instead of resolving instantly.
   const targets = objectives.filter((o) => !o.enduring);
   const allComplete =
@@ -179,7 +185,14 @@ export const POINT_BUDGETS = Object.freeze({
 export function dealDemand(rows) {
   let global = 0;
   const corners = new Map();
-  rows.forEach(({ params: { scope, count } }) => {
+  rows.forEach(({ params: { scope, count, constraint } }) => {
+    // A limit demands no words at all — it caps them, and a tension rider's
+    // count is an *allowance* above the target's. Folding one in here would
+    // report a deal as demanding more than it does, in the one direction this
+    // function promises never to err. Riders are attached after the search
+    // and so never reach this today; the guard is what keeps that ordering
+    // from being load-bearing.
+    if (constraint === Constraint.FEWER_THAN) return;
     if (scope === GLOBAL_SCOPE) global = Math.max(global, count);
     else corners.set(scope, Math.max(corners.get(scope) ?? 0, count));
   });
@@ -412,6 +425,122 @@ export function selectWithinBudget(pool, budget, random = Math.random, minDemand
 }
 
 // ---------------------------------------------------------------------
+// TENSION: limits dealt onto the targets that make them bind
+//
+// The third tier table, and the only one that buys *decisions* rather than
+// work. Budget says how hard each goal is; demand says how much game they add
+// up to; neither can make a move wrong. Every generated objective is a
+// monotone counter, so without this the winning strategy at any tier is to
+// keep playing — which is the thing these two numbers are here to break.
+//
+// A rider caps the corner one target sits on, so reaching that target means
+// choosing what to bank there. See TENSION RIDERS in generator.js for why a
+// limit has to arrive this way rather than as a priced row.
+// ---------------------------------------------------------------------
+
+// How many riders a deal may carry, as [min, max]. Kept low on purpose: a
+// rider is the twist on a hand, the same way an exclusion is, and two corners
+// under a cap is already most of a board's usable space.
+const RIDERS_PER_DEAL = Object.freeze({
+  easy: [0, 0],
+  medium: [0, 1],
+  hard: [1, 1],
+  expert: [1, 2],
+});
+
+// Slack as a fraction of the target's count, so `slack = ceil(count * rate)`.
+//
+// Proportional rather than a flat number of wasted words, because the
+// difficulty of a cap is the *share* of your words there that have to count,
+// not the absolute allowance. A flat slack of 2 is generous on a 2-word target
+// and near-unplayable on a 10-word one, and higher tiers deal the higher
+// counts — so a flat number would compound in the one place it must not.
+//
+// `ceil` also guarantees at least one wasted word is always permitted. A
+// zero-slack cap ("every word you bank here must match") was tried on paper
+// and is a different game: one unlucky draw ends the run with no recourse,
+// since a corner cannot be un-played. Every tier keeps a mulligan.
+//
+// null means no riders at that tier, which is what Easy is.
+const SLACK_RATE = Object.freeze({
+  easy: null,
+  medium: 0.75,
+  hard: 0.5,
+  expert: 0.25,
+});
+
+// How many times a tier that wants riders may re-deal to get them. See
+// dealWithTension.
+const TENSION_ATTEMPTS = 8;
+
+// Attaches riders to a dealt set. Runs *after* selectWithinBudget rather than
+// inside the search, which is what keeps the search's guarantees intact: the
+// budget is still spent exactly, the demand floor is still met, and `null`
+// still proves a tier infeasible. A rider changes none of those, because it
+// costs nothing and demands nothing.
+function attachRiders(rows, { riders: [min, max] = [0, 0], rate }, random) {
+  if (!rate || max === 0) return rows;
+
+  const perCorner = new Map();
+  rows.forEach((row) => {
+    const { scope } = row.params;
+    if (scope === GLOBAL_SCOPE) return;
+    if (!perCorner.has(scope)) perCorner.set(scope, []);
+    perCorner.get(scope).push(row);
+  });
+
+  // A corner with exactly one objective on it, and only then. Two targets
+  // sharing a corner may or may not be jointly satisfiable inside one
+  // allowance — one word is not both 3 letters and 5 — and deciding that is
+  // the requirements algebra the possibility check deliberately doesn't have
+  // (see generator.js). With a single target the rider is winnable by
+  // construction, since its allowance is the target's count plus slack.
+  const eligible = [...perCorner.values()]
+    .filter((forCorner) => forCorner.length === 1 && canCarryRider(forCorner[0].params))
+    .map((forCorner) => forCorner[0]);
+
+  const wanted = min + Math.floor(random() * (max - min + 1));
+  const out = [...rows];
+  for (const target of shuffled(eligible, random)) {
+    if (out.length - rows.length >= wanted) break;
+    const rider = buildRider(target, Math.ceil(target.params.count * rate));
+    // A rider can't contradict its own target — the allowance is above the
+    // count by construction — but two riders on different corners can land on
+    // the same sentence, which is the reading problem sameDemandDifferentCorner
+    // exists for. Running the same check dealt rows run is cheap, and it says
+    // that riders play by the deal's rules rather than around them.
+    if (out.some((taken) => rowsIncompatible(rider, taken))) continue;
+    out.push(rider);
+  }
+  return out;
+}
+
+// One dealt set, with riders on it. A tier whose minimum is 1 or more re-deals
+// when it gets none, because plenty of otherwise-fine deals have nowhere to
+// put one: every corner row may be sharing its corner, or the deal may have
+// gone all-global, or the only corner target may be an unconditional "score N
+// words here", which carries no rider by design (see canCarryRider).
+//
+// A bounded re-roll rather than a rider-aware search. Pushing eligibility into
+// findCombination would make it a fourth constraint alongside exact spend, one
+// row per family and the possibility check — and unlike those it is a
+// preference, not a requirement: a Hard deal without a rider is still a legal,
+// fully-priced Hard deal. So the fallback is the last set drawn, and a tier can
+// never fail to deal for want of tension. It measures at roughly 85% of Hard
+// deals on the first attempt, so eight is far past the point of diminishing
+// returns.
+function dealWithTension(pool, budget, minDemand, tension, random) {
+  const wantsRiders = Boolean(tension.rate) && (tension.riders?.[0] ?? 0) > 0;
+  let rows = [];
+  for (let attempt = 0; attempt < TENSION_ATTEMPTS; attempt++) {
+    rows = attachRiders(selectWithinBudget(pool, budget, random, minDemand), tension, random);
+    if (!wantsRiders) break;
+    if (rows.some((row) => row.params.constraint === Constraint.FEWER_THAN)) break;
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------
 // The mode table
 // ---------------------------------------------------------------------
 
@@ -439,6 +568,8 @@ export const GAME_MODES = Object.freeze([
     pool: OBJECTIVE_POOL,
     budgets: POINT_BUDGETS,
     minDemand: MIN_DEMAND,
+    riders: RIDERS_PER_DEAL,
+    slack: SLACK_RATE,
     usesDifficulty: true,
   },
 ]);
@@ -489,11 +620,12 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
   if (mode.pool) {
     const budget = mode.budgets?.[tier] ?? 0;
     const minDemand = mode.minDemand?.[tier] ?? 0;
+    const tension = { riders: mode.riders?.[tier], rate: mode.slack?.[tier] };
     return defineMode({
       id: mode.id,
       label,
       difficulty: tier,
-      selectObjectives: () => selectWithinBudget(mode.pool, budget, random, minDemand),
+      selectObjectives: () => dealWithTension(mode.pool, budget, minDemand, tension, random),
       limits: mode.limits,
       ...flags,
     });
@@ -546,6 +678,16 @@ export function createMode(id, difficulty = DEFAULT_DIFFICULTY, { random = Math.
       // exhaustive over families *and* over the possibility check, so an
       // empty result means no compatible deal spends this budget exactly —
       // not that the roll was unlucky.
+      // A missing tension entry would silently mean "no riders at this tier",
+      // which is a quieter failure than the budget ones below and just as
+      // wrong — a tier that lost its pressure still deals a full panel. Same
+      // reasoning as getDefinition throwing on an unknown type.
+      if (mode.riders && (!mode.riders[tier] || mode.slack?.[tier] === undefined)) {
+        throw new Error(
+          `Game mode "${mode.id}" declares tension riders but has no entry for difficulty ` +
+            `"${tier}" in RIDERS_PER_DEAL or SLACK_RATE.`
+        );
+      }
       const minDemand = mode.minDemand?.[tier] ?? 0;
       if (feasibleDealSizes(mode.pool, budget, minDemand).length === 0) {
         // Which of the two constraints is unsatisfiable matters a lot to
